@@ -115,9 +115,15 @@ small example on first run. The runner reloads it by itself when you save in the
 If a button is marked *run when the runner closes*, closing the `autom8` window runs
 it (up to 20 s), e.g. to stop everything the *Start* button launched.
 
-See [`examples/vr-monado.json`](examples/vr-monado.json) for a real setup: check the
-controllers, start Monado, wait for its socket, start the overlays, and a Stop button
-that shuts it all down gracefully.
+See [`examples/web-server.json`](examples/web-server.json) for a small complete setup
+(Linux, needs `python3` and `curl`): **Start** makes a demo page, starts a local web
+server, waits until it answers, and asks whether to open it in the browser; **Status**
+tells you if it is running; **Stop** asks it to quit and kills it after 3 s. Closing
+the runner window runs **Stop**.
+
+```sh
+./autom8 examples/web-server.json
+```
 
 ## Linux vs Windows
 

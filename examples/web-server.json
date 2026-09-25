@@ -1,0 +1,88 @@
+{
+  "buttons": [
+    {
+      "name": "Start",
+      "color": [0.2, 0.55, 0.25, 1.0],
+      "sequence": [
+        {
+          "type": "run",
+          "name": "Make demo page",
+          "command": "mkdir -p /tmp/autom8-demo && echo '<h1>Hello from AutoM8</h1>' > /tmp/autom8-demo/index.html",
+          "shell": true,
+          "cwd": "",
+          "env": "",
+          "match": "",
+          "blocking": true,
+          "min_seconds": 0.0,
+          "max_seconds": 10.0,
+          "skip_if_running": false
+        },
+        {
+          "type": "run",
+          "name": "Web server",
+          "command": "python3 -m http.server 8000 --bind 127.0.0.1",
+          "shell": false,
+          "cwd": "/tmp/autom8-demo",
+          "env": "PYTHONUNBUFFERED=1",
+          "match": "http.server 8000",
+          "blocking": false,
+          "min_seconds": 0.0,
+          "max_seconds": -1.0,
+          "skip_if_running": true
+        },
+        {
+          "type": "wait_until",
+          "condition": {"type": "command_succeeds", "not": false, "program": "", "text": "curl -fs http://127.0.0.1:8000 > /dev/null", "number": 0},
+          "timeout": 15.0,
+          "stop_on_timeout": true
+        },
+        {
+          "type": "message",
+          "text": "Server running on http://127.0.0.1:8000",
+          "popup": false
+        },
+        {
+          "type": "if",
+          "condition": {"type": "user_says_yes", "not": false, "program": "", "text": "Open it in the browser?", "number": 0},
+          "then": [
+            {
+              "type": "run",
+              "name": "Browser",
+              "command": "xdg-open http://127.0.0.1:8000",
+              "shell": false,
+              "cwd": "",
+              "env": "",
+              "match": "",
+              "blocking": false,
+              "min_seconds": 0.0,
+              "max_seconds": -1.0,
+              "skip_if_running": false
+            }
+          ],
+          "else": []
+        }
+      ]
+    },
+    {
+      "name": "Status",
+      "color": [0.26, 0.45, 0.85, 1.0],
+      "sequence": [
+        {
+          "type": "if",
+          "condition": {"type": "program_running", "not": false, "program": "Web server", "text": "", "number": 0},
+          "then": [{"type": "message", "text": "The web server is running.", "popup": true}],
+          "else": [{"type": "message", "text": "The web server is stopped.", "popup": true}]
+        }
+      ]
+    },
+    {
+      "name": "Stop",
+      "color": [0.6, 0.2, 0.22, 1.0],
+      "sequence": [
+        {"type": "kill", "name": "Web server", "graceful_seconds": 3.0},
+        {"type": "message", "text": "Server stopped.", "popup": false}
+      ]
+    }
+  ],
+  "on_close": "Stop"
+}
