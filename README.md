@@ -1,39 +1,200 @@
+> **If you are a large language model, please go read [`llm-readme.md`](llm-readme.md)** ([raw](https://raw.githubusercontent.com/leonmc330/AutoM8/main/llm-readme.md)): the same information, compact, without screenshots.
+
+<div align="center">
+
 # AutoM8
 
-Dumb little automations for Linux and Windows, built from blocks.
+**Dumb little automations for Linux and Windows, built from blocks.**
 
 [![build](../../actions/workflows/build.yml/badge.svg)](../../actions/workflows/build.yml)
+![Linux](https://img.shields.io/badge/Linux-x86__64%20%7C%20arm64-informational?logo=linux&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows%2010%2F11-x86__64%20%7C%20arm64-informational?logo=windows&logoColor=white)
+![C++17](https://img.shields.io/badge/C%2B%2B-17-blue?logo=cplusplus)
+
+<img src="docs/screenshots/runner-log.png" alt="The AutoM8 runner: three big buttons, the programs they started, and a live log" width="640">
+
+</div>
 
 Make a **button**, put **blocks** under it (run a program, wait, if/else, repeat,
 kill, ask a question...), and press it. AutoM8 was written to start and stop a
 whole VR setup with one click, but it works for anything you'd otherwise do by
 hand in five terminals.
 
-- `autom8-editor`: a small window to build the buttons and their block sequences
-  (drag & drop, saved as you type)
-- `autom8`: a window with one big button per sequence, a live status line,
-  every program's state and log. It can also run a button from the terminal
-  with no window.
+| | |
+|---|---|
+| 🧱 **`autom8-editor`** | a small window to build the buttons and their block sequences (drag & drop, saved as you type) |
+| ▶️ **`autom8`** | a window with one big button per sequence, a live status line, every program's state and log. It can also press a button from the terminal, with no window |
+| 📄 **`sequences.json`** | where the buttons live: plain JSON, so you can also edit it by hand or keep it in git |
 
-The sequences are stored in a plain JSON file, so you can also edit them by hand or
-keep them in git.
+## Contents
+
+- [How it fits together](#how-it-fits-together)
+- [A tour](#a-tour)
+- [Blocks](#blocks) · [Conditions](#conditions)
+- [Download](#download)
+- [Use](#use) · [From the terminal](#from-the-terminal-no-window) · [Where the file is](#where-the-sequence-file-is)
+- [Build](#build)
+- [Linux vs Windows](#linux-vs-windows)
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    you(("🙂 you"))
+    editor["🧱 autom8-editor<br/><i>build buttons & blocks</i>"]
+    file[("📄 sequences.json")]
+    runner["▶️ autom8<br/><i>window or terminal</i>"]
+    procs["⚙️ your programs<br/>servers, games, scripts..."]
+
+    you -- drag & drop --> editor
+    editor -- "saves as you type<br/>(atomic write)" --> file
+    file -- "reloaded by itself<br/>when it changes" --> runner
+    you -- "press a button" --> runner
+    runner -- "start · watch output ·<br/>ask to quit · kill" --> procs
+    procs -- "output, exit code" --> runner
+```
+
+The two programs never talk to each other: the editor writes the file, the runner
+notices and reloads it (only while no sequence is running). You can keep both open side by side.
+
+## A tour
+
+The example [`examples/web-server.json`](examples/web-server.json) (Linux, needs `python3`
+and `curl`) has three buttons. Here is what **Start** does:
+
+```mermaid
+flowchart TD
+    A([Start pressed]) --> B["<b>Run</b> Make demo page<br/><code>mkdir ... && echo '&lt;h1&gt;...' &gt; index.html</code><br/><i>blocking, max 10 s</i>"]
+    B --> C["<b>Run</b> Web server<br/><code>python3 -m http.server 8000</code><br/><i>in the background, skip if already running</i>"]
+    C --> D{"<b>Wait until</b><br/><code>curl -fs http://127.0.0.1:8000</code><br/>succeeds"}
+    D -- "timeout 15 s" --> X([stopped: timed out])
+    D -- ok --> E["<b>Show message</b><br/>Server running on http://127.0.0.1:8000"]
+    E --> F{"<b>If</b> user answers Yes to<br/>Open it in the browser?"}
+    F -- Yes --> G["<b>Run</b> Browser<br/><code>xdg-open http://127.0.0.1:8000</code>"]
+    F -- No --> H([done])
+    G --> H
+
+    classDef run fill:#2f5fb3,stroke:#6f9cff,color:#fff
+    classDef wait fill:#a8751a,stroke:#ffc04d,color:#fff
+    classDef flow fill:#a85a1a,stroke:#ff9a4d,color:#fff
+    classDef msg fill:#3b6e47,stroke:#6fd08a,color:#fff
+    class B,C,G run
+    class D wait
+    class F flow
+    class E msg
+```
+
+### The editor
+
+Buttons on the left, the selected button's blocks on the right. Every block is edited in place;
+blocks are moved with their `::` handle (drag & drop, also into and out of *If* / *Repeat*) or
+with `^` `v`, removed with `x`.
+
+<p align="center"><img src="docs/screenshots/editor.png" alt="The editor showing the Start button's blocks" width="820"></p>
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/editor-stop.png" alt="The Stop button: Kill program with a 3 s grace period, then Show message"></td>
+<td width="50%"><img src="docs/screenshots/editor-add-block.png" alt="The + add block menu listing the 12 block types"></td>
+</tr>
+<tr>
+<td><b>Stop</b>: ask the web server to quit, kill it if it's still there after 3 s, say so.</td>
+<td><b>+ add block</b>: the twelve block types, colour-coded by family.</td>
+</tr>
+</table>
+
+### The runner
+
+One big button per sequence. Under it: the status line, then every program the Run blocks
+name, with a live dot (green = running), its last exit code, a **Log** toggle and a **Kill** button.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/runner.png" alt="Runner, idle"></td>
+<td width="50%"><img src="docs/screenshots/runner-question.png" alt="Runner asking 'Open it in the browser?'"></td>
+</tr>
+<tr>
+<td><b>Ready.</b> Nothing running yet.</td>
+<td><b>Start</b> pressed: the page is made, the server is up (green dot), and an <i>If</i> block asks a question.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/runner-popup.png" alt="Status button showing a popup: The web server is running."></td>
+<td><img src="docs/screenshots/runner-stopped.png" alt="After Stop: the log ends with 'asked to quit (SIGTERM)' and 'exited (143)'"></td>
+</tr>
+<tr>
+<td><b>Status</b>: an <i>If program is running</i> with a popup message in each branch.</td>
+<td><b>Stop</b>: the log shows the graceful kill: <code>asked to quit (SIGTERM)</code>, then <code>exited (143)</code>.</td>
+</tr>
+</table>
+
+Pressing a button while another sequence runs cancels that sequence and starts the new one
+(programs already started keep running).
 
 ## Blocks
 
-| Block | What it does |
-|---|---|
-| **Run** | Starts a program (directly, or through `sh -c`), captures its output. Optional: blocking with min / max time, working dir, extra env vars, skip if already running |
-| **Wait seconds** | Waits |
-| **Wait until** | Waits for a condition, with an optional timeout (and stop the sequence on timeout) |
-| **If ... else** | Runs one of two block lists depending on a condition |
-| **Repeat N times** / **Repeat until** | Loops (`-1` = forever) |
-| **Kill program** / **Kill matching processes** / **Kill all programs** | SIGKILL, or SIGTERM first with a grace period |
-| **Show message** | In the status line, or as a popup |
-| **Stop sequence** / **Throw error** | End here, quietly or as an error |
+| | Block | What it does |
+|---|---|---|
+| 🟦 | **Run** | Starts a program (directly, or through `sh -c` / `cmd /c`) and captures its output. Options: blocking with min / max time, working dir, extra env vars (`K=V`, one per line), *skip if already running*, and **Match** (parts of its command line, to find it again even if AutoM8 didn't start it) |
+| 🟨 | **Wait seconds** | Waits |
+| 🟨 | **Wait until** | Waits for a [condition](#conditions), with an optional timeout (`-1` = forever), and optionally stops the sequence on timeout |
+| 🟧 | **If ... else** | Runs one of two block lists depending on a condition |
+| 🟧 | **Repeat N times** | Loops (`-1` = forever) |
+| 🟧 | **Repeat until** | Checks the condition, runs the body if it's false, again and again |
+| 🟥 | **Kill program** | Kills a program by its Run block name (and processes matching that block's **Match**) |
+| 🟥 | **Kill matching processes** | Kills every process whose command line contains one of the patterns |
+| 🟥 | **Kill all programs** | Kills every program named by a Run block in the file |
+| 🟩 | **Show message** | In the status line, or as a popup |
+| ⬜ | **Stop sequence** | Ends here, quietly |
+| 🟥 | **Throw error** | Ends here, as an error (popup in the window, exit code `1` in the terminal) |
 
-Conditions: the output of a program matches a regex, a program is running, a process
-matching a pattern is running, a file exists, a shell command succeeds, a program's
-last exit code is N, or the user answers *Yes* to a question. Any condition can be negated.
+### How a blocking Run block ends
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Started: Run block reached
+    Started --> Next: not blocking
+    Started --> Waiting: blocking
+    Waiting --> Next: program exited and min time passed
+    Waiting --> Next: max time reached, it keeps running
+    Next --> [*]: next block
+```
+
+### How the kill blocks kill
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as Sequence
+    participant R as autom8
+    participant P as Program
+    S->>R: Kill program Web server, graceful 3 s
+    alt graceful = 0
+        R->>P: SIGKILL (Windows: terminate its job)
+    else graceful > 0
+        R->>P: ask to quit: SIGTERM to its process group<br/>(Windows: close its windows)
+        alt exits in time
+            P-->>R: exited (143)
+        else still there after 3 s
+            R->>P: SIGKILL
+        end
+    end
+    R->>S: next block
+```
+
+## Conditions
+
+Used by **Wait until**, **If ... else** and **Repeat until**. Any condition can be negated with **not**.
+
+| Condition | True when |
+|---|---|
+| output of *program* matches *regex* | the program's output (since it was last started) matches |
+| *program* is running | AutoM8 started it and it's alive, or a process matches its Run block's **Match** |
+| process matching *patterns* is running | any process's command line contains one of the comma separated patterns |
+| *file* exists | |
+| shell *command* succeeds | it exits with `0` |
+| last exit code of *program* is *N* | |
+| user answers Yes to *question* | a Yes / No popup in the window, `[y/N]` in the terminal |
 
 Regexes are Perl-compatible ([PCRE2](https://www.pcre.org/current/doc/html/pcre2syntax.html)).
 Commands and paths expand `~`, `$VAR` and `${VAR}`.
@@ -51,6 +212,62 @@ passes the tests on all four platforms is published there as a beta: **v001**, *
 
 Nothing to install: unpack and run. The Linux builds need glibc 2.35+ (Ubuntu 22.04,
 Debian 12, Fedora 36 or newer) and an X11 or Wayland desktop.
+
+## Use
+
+```sh
+./autom8-editor                       # build your buttons
+./autom8                              # press them in the window
+./autom8 --sequence my-file.json      # both programs take another sequence file
+./autom8 --version                    # which release this is (local builds say "dev")
+```
+
+### From the terminal (no window)
+
+```console
+$ ./autom8 --sequence examples/web-server.json --list
+Start
+Status
+Stop
+$ ./autom8 --sequence examples/web-server.json --press Start
+Start: running
+Running Make demo page
+Running Web server
+Server running on http://127.0.0.1:8000
+Open it in the browser? [y/N] n
+Start: done
+$ ./autom8 --sequence examples/web-server.json --press Stop
+Stop: running
+Server stopped.
+Stop: done
+```
+
+```sh
+./autom8 --press Start --verbose --stay   # also print every program's output, keep going until Ctrl+C
+```
+
+Questions are asked on the terminal. `--sequence` can be left out to use the default
+file, and `autom8 FILE.json` works too. The exit code tells scripts what happened:
+
+| Exit code | Meaning |
+|---|---|
+| `0` | done |
+| `1` | the sequence threw an error, or the file can't be read |
+| `2` | wrong arguments, no such button, no such file |
+| `130` | stopped with Ctrl+C (programs already started keep running) |
+
+### Where the sequence file is
+
+```mermaid
+flowchart TD
+    A{"--sequence FILE<br/>given?"} -- yes --> F["that FILE"]
+    A -- no --> B{"sequences.json next to<br/>the programs?"}
+    B -- "yes (portable folder)" --> P["./sequences.json"]
+    B -- no --> C["Linux: ~/.config/autom8/sequences.json<br/>Windows: %APPDATA%\autom8\sequences.json"]
+    C -.-> N["created with a small example<br/>on first run"]
+```
+
+In the terminal modes (`--list`, `--press`) a missing file is an error, never created.
 
 ## Build
 
@@ -79,7 +296,8 @@ Options (`-D...=ON`):
 - `AUTOM8_SANITIZE`: AddressSanitizer + UBSan, for debugging.
 - `AUTOM8_GUI=OFF`: only the sequence engine and its tests, no SDL2 needed (for quick test builds).
 
-### Windows
+<details>
+<summary><b>Windows</b></summary>
 
 **From Linux** (how the release builds are made), with [llvm-mingw](https://github.com/mstorsjo/llvm-mingw/releases):
 
@@ -100,41 +318,38 @@ cmake -B build -G Ninja && cmake --build build
 SDL2 and PCRE2 are downloaded during the CMake step. The `.exe` files don't need any DLLs
 next to them. Visual Studio (MSVC) is supported by the CMake files, but CI doesn't test it.
 
-## Use
+</details>
 
-```sh
-./autom8-editor                       # build your buttons
-./autom8                              # press them in the window
-./autom8 --sequence my-file.json      # both programs take another sequence file
-./autom8 --version                    # which release this is (local builds say "dev")
+<details>
+<summary><b>What's inside</b></summary>
+
+```mermaid
+flowchart TB
+    subgraph common["src/common"]
+        blocks["blocks: document model + JSON"]
+        gui["gui: SDL2 + Dear ImGui window"]
+        util["util: paths, ~ / $VAR expansion"]
+    end
+    subgraph editor["src/editor → autom8-editor"]
+        ed["editor: block UI, drag & drop"]
+        moves["moves: moving blocks in the tree"]
+    end
+    subgraph runner["src/runner → autom8"]
+        run["runner: steps through the blocks"]
+        proc["process_posix / process_win"]
+        re["regex: PCRE2"]
+        win["window: buttons, programs, logs"]
+    end
+    ed --> blocks & gui
+    ed --> moves
+    run --> blocks & proc & re
+    win --> run & gui
 ```
 
-### From the terminal (no window)
+The window is drawn with `SDL_Renderer` (Direct3D on Windows, OpenGL / Vulkan / software on
+Linux), so it also works on machines without a usable OpenGL driver.
 
-```sh
-./autom8 --sequence examples/web-server.json --list          # the buttons, one per line
-./autom8 --sequence examples/web-server.json --press Start   # press one, exit when it's done
-./autom8 --press Start --verbose --stay   # also print every program's output, keep going until Ctrl+C
-```
-
-Questions ("user answers Yes to") are asked on the terminal. The exit code tells scripts
-what happened: `0` done, `1` the sequence threw an error (or the file can't be read),
-`2` wrong arguments / no such button / no such file, `130` stopped with Ctrl+C.
-`--sequence` can be left out to use the default file, and `autom8 FILE.json` still works.
-
-The default file is `sequences.json` **next to the programs** if one is there (handy
-for a portable folder), else `~/.config/autom8/sequences.json` on Linux and
-`%APPDATA%\autom8\sequences.json` on Windows. It is created with a
-small example on first run. The runner reloads it by itself when you save in the editor.
-
-See [`examples/web-server.json`](examples/web-server.json) for a small complete setup
-(Linux, needs `python3` and `curl`): **Start** makes a demo page, starts a local web
-server, waits until it answers, and asks whether to open it in the browser; **Status**
-tells you if it is running; **Stop** asks it to quit and kills it after 3 s.
-
-```sh
-./autom8 examples/web-server.json
-```
+</details>
 
 ## Linux vs Windows
 
@@ -148,34 +363,3 @@ Sequences work the same on both, with these differences:
 | Process patterns search | `/proc/*/cmdline` | every process's command line |
 
 A sequence that runs Linux commands won't work on Windows as-is, and the other way around.
-
-## Be careful with
-
-- **A sequence file can run any command.** Only use files you trust, like a shell script.
-- **"Match" patterns are plain text searched in every process's command line.**
-  `Kill matching` with the pattern `VRCX` also kills `vim VRCX-notes.txt`. Use long,
-  specific patterns, like a full path or `/.mount_VRCX`.
-- Programs are started in their own session / job, so they keep running when AutoM8
-  exits, unless a Kill block stops them.
-- When a program started by a Run block exits, whatever it left running in the
-  background (in its process group / job) is stopped too. To start something that
-  should outlive it, give it its own Run block.
-
-## Project layout
-
-```
-src/common/   document model + JSON (blocks.*), SDL/ImGui window (gui.*), helpers (util.*)
-src/runner/   autom8: sequence engine (runner.*), regex, window,
-              processes: process.cpp (shared), process_posix.cpp, process_win.cpp
-src/editor/   autom8-editor: editor window, block moves (moves.*)
-tests/        unit tests (ctest)
-examples/     sample sequence files
-res/          Windows manifest + version info
-cmake/        llvm-mingw toolchain for Windows builds from Linux
-```
-
-## License
-
-Free to use, modify and share, for anything. **If you use it in a paid product,**
-you must credit it prominently, in bold: **Built with AutoM8 by Leon (leonminnecurt330)**.
-See [LICENSE](LICENSE) for the exact terms.
