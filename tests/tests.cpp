@@ -1,6 +1,7 @@
 // Unit tests for the parts that don't need a window: `make test`.
 
 #include "blocks.hpp"
+#include "config.hpp"
 #include "moves.hpp"
 #include "process.hpp"
 #include "regex.hpp"
@@ -111,11 +112,51 @@ static void test_json_round_trip()
 		CHECK(saved.find("on_close") == std::string::npos);
 	}
 
+	// Every file says which format version it is in; files from before versions are version 1.
+	CHECK(document_json(d).find("\"version\": " + std::to_string(kDocumentVersion)) != std::string::npos);
+	bool incompatible = true;
+	std::ofstream(path_of(path)) << "{ \"buttons\": [] }";
+	CHECK(load_document(path, back, &err, &incompatible) && !incompatible);
+	// A newer (or too old) format is refused, and said so.
+	std::ofstream(path_of(path)) << "{ \"version\": " << kDocumentVersion + 1 << ", \"buttons\": [] }";
+	CHECK(!load_document(path, back, &err, &incompatible) && incompatible);
+	CHECK(err.find("newer") != std::string::npos);
+	std::ofstream(path_of(path)) << "{ \"version\": " << kMinDocumentVersion - 1 << ", \"buttons\": [] }";
+	CHECK(!load_document(path, back, &err, &incompatible) && incompatible);
+	std::ofstream(path_of(path)) << "{ \"version\": \"1\", \"buttons\": [] }";
+	CHECK(!load_document(path, back, &err, &incompatible) && !incompatible);
+
 	// A broken file is reported, not loaded.
 	std::ofstream(path_of(path)) << "{ \"buttons\": [ {\"name\": 3} ]";
 	CHECK(!load_document(path, back, &err));
 	CHECK(!err.empty());
 	fs::remove(path_of(path));
+}
+
+static void test_config()
+{
+	std::string path = path_string(fs::temp_directory_path() / "autom8-test-dir" / "config.json");
+	fs::remove_all(path_of(path).parent_path());
+	Config c = load_config(path); // no file: defaults
+	CHECK(c.ui_scale == 0 && c.last_file.empty());
+	CHECK(save_ui_scale(1.5f, path)); // creates the folder
+	CHECK(save_last_file("/some/file.json", path));
+	c = load_config(path);
+	CHECK(c.ui_scale == 1.5f && c.last_file == "/some/file.json"); // one setting doesn't drop the other
+	CHECK(save_ui_scale(2, path));
+	CHECK(load_config(path).last_file == "/some/file.json");
+
+	// A config from a newer version is read, but not written over.
+	std::ofstream(path_of(path)) << "{ \"version\": " << kConfigVersion + 1 << ", \"ui_scale\": 3 }";
+	CHECK(load_config(path).ui_scale == 3);
+	CHECK(!save_ui_scale(1, path));
+	CHECK(load_config(path).ui_scale == 3);
+
+	std::ofstream(path_of(path)) << "not json";
+	CHECK(load_config(path).ui_scale == 0);
+	CHECK(save_ui_scale(1.25f, path)); // a broken file is replaced
+	CHECK(load_config(path).ui_scale == 1.25f);
+	fs::remove_all(path_of(path).parent_path());
 }
 
 static void test_moves()
@@ -289,6 +330,7 @@ int main()
 {
 	test_util();
 	test_json_round_trip();
+	test_config();
 	test_moves();
 	test_regex();
 	test_process();

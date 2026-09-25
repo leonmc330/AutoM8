@@ -1,5 +1,6 @@
 // autom8: runs the buttons of a sequence file.
 
+#include "config.hpp"
 #include "gui.hpp"
 #include "runner.hpp"
 #include "window.hpp"
@@ -210,7 +211,12 @@ int main(int argc, char **argv)
 	hide_own_console();
 #endif
 
+	Config cfg = load_config();
+	set_ui_scale(cfg.ui_scale); // 0 (first run): fit the screen, then saved
 	GuiCallbacks cb;
+	cb.scale_changed = [&](float s) {
+		if (s != cfg.ui_scale && save_ui_scale(s)) cfg.ui_scale = s;
+	};
 	cb.update = [&] {
 		r.update();
 		r.reload_if_changed();

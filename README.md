@@ -118,6 +118,17 @@ unsaved changes, and the status bar at the bottom shows the full path and what j
 | Reset to default buttons... | | replaces every button with the example ones (asks first, not saved until you save) |
 | Quit | `Ctrl+Q` | same as closing the window |
 
+Started without a file, the editor opens the file you had open last time.
+
+| Interface menu | Shortcut | |
+|---|---|---|
+| 1x ... 3x | | how big everything is drawn: 1x fits a 1920x1080 screen, 2x a 4K one |
+| Fit the screen | `Ctrl+0` | the scale that fits the screen the window is on (what the first run picks) |
+| Bigger / Smaller | `Ctrl+=` `Ctrl+-` | the next scale up / down (these shortcuts work in `autom8` too) |
+
+The scale and the last opened file are kept in `config.json`, next to the default sequence file
+(Linux `~/.config/autom8/config.json`, Windows `%APPDATA%\autom8\config.json`), shared by both programs.
+
 <table>
 <tr>
 <td width="50%"><img src="docs/screenshots/editor-file-menu.png" alt="The File menu: New, Open, Reload from disk, Save, Save as, Reset to default buttons, Quit"></td>
@@ -311,6 +322,11 @@ flowchart TD
 ```
 
 In the terminal modes (`--list`, `--press`) a missing file is an error, never created.
+The editor, started without a file, opens the one it had open last time (if it still exists).
+
+Every sequence file has a `"version"`: the format it is written in. A file made by a newer AutoM8
+with a format this one doesn't know is refused (never run, never saved over) with a message saying so;
+files from before the version field are version 1.
 
 ## Build
 

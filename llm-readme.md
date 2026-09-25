@@ -4,7 +4,7 @@ Compact reference for tools/agents. Human docs: README.md.
 
 ## What
 Linux + Windows automation from blocks. A *document* (JSON) holds *buttons*; each button has a *sequence* of *blocks*. Pressing a button runs its blocks in order.
-- `autom8-editor [--sequence] [FILE]`: GUI editor. File menu: New Ctrl+N, Open Ctrl+O, Reload from disk Ctrl+R/F5, Save Ctrl+S (Untitled → Save as dialog, then remembers path), Save as Ctrl+Shift+S, Reset to default buttons, Quit Ctrl+Q. Asks Save/Don't save/Cancel before dropping unsaved changes (New/Open/Quit/window close) and confirms Reload. Title shows `name*` when modified. Native dialogs: kdialog/zenity (Linux), common dialog (Windows). Saves are atomic.
+- `autom8-editor [--sequence] [FILE]`: GUI editor. File menu: New Ctrl+N, Open Ctrl+O, Reload from disk Ctrl+R/F5, Save Ctrl+S (Untitled → Save as dialog, then remembers path), Save as Ctrl+Shift+S, Reset to default buttons, Quit Ctrl+Q. Asks Save/Don't save/Cancel before dropping unsaved changes (New/Open/Quit/window close) and confirms Reload. Title shows `name*` when modified. Native dialogs: kdialog/zenity (Linux), common dialog (Windows). Saves are atomic. Interface menu: UI scale 1x–3x (1x = 1920x1080, 2x = 4K), Fit the screen Ctrl+0, Bigger Ctrl+=, Smaller Ctrl+- (shortcuts also in the runner). No FILE given: reopens the last opened file.
 - `autom8 [--sequence] [FILE]`: GUI runner (one button per sequence, status line, program list with running dot / exit code / log / kill). Reloads the file when it changes, only while idle.
 - Pressing a button while one runs cancels the running sequence; programs already started keep running.
 
@@ -23,14 +23,18 @@ autom8 --version | --help
 ## File location (no FILE given)
 1. `sequences.json` next to the executables (portable), else
 2. Linux `$XDG_CONFIG_HOME/autom8/sequences.json` (default `~/.config/autom8/`); Windows `%APPDATA%\autom8\sequences.json`.
-FILE may be relative; `~`, `$VAR`, `${VAR}` expanded.
+FILE may be relative; `~`, `$VAR`, `${VAR}` expanded. The editor without FILE first tries `last_file` from the config.
+
+## Config
+`config.json` in the same folder (`~/.config/autom8/`, `%APPDATA%\autom8\`): `{"version": 1, "ui_scale": 1.5, "last_file": "/abs/path.json"}`. Missing `ui_scale` → picked from the screen size (min(w/1920, h/1080) rounded to 0.25, 1–3) and saved. Each program rewrites only the key it changes. A config with a newer `version` is read but not written.
 
 ## JSON format
 ```json
-{"buttons": [
+{"version": 1, "buttons": [
   {"name": "Start", "color": [r,g,b,a], "sequence": [BLOCK, ...]}
 ]}
 ```
+`version`: format version (missing = 1). Programs read versions kMinDocumentVersion..kDocumentVersion (`src/common/blocks.hpp`, now 1..1) and refuse others (runner: exit 1 / error; editor: opens Untitled instead, never saves over it).
 `color` floats 0–1 (alpha optional). Legacy `{"start":[...],"stop":[...]}` is read as two buttons.
 
 ### Blocks (`type` → fields, defaults)

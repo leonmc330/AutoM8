@@ -1,12 +1,16 @@
 // Editor window: button list on the left, the selected button's blocks on the
 // right (inline fields, add / delete / move by buttons or drag & drop).
-// A File menu saves / opens / reloads, and asks before dropping unsaved changes.
+// A File menu saves / opens / reloads, and asks before dropping unsaved changes;
+// an Interface menu sets the UI scale.
 #include "editor.hpp"
+#include "config.hpp"
 #include "gui.hpp"
 #include "moves.hpp"
 #include "util.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -52,12 +56,12 @@ static void edit_condition(Condition &c, bool &dirty, float w)
 	dirty |= ImGui::Checkbox("not", &c.negate);
 	ImGui::SameLine();
 	int t = (int)c.type;
-	ImGui::SetNextItemWidth(std::max(120.0f, w - kLabelWidth - 60));
+	ImGui::SetNextItemWidth(std::max(px(120), w - label_width() - px(60)));
 	if (ImGui::Combo("##ct", &t, kCondLabels, kCondCount)) {
 		c.type = (CT)t;
 		dirty = true;
 	}
-	float fw = w - kLabelWidth;
+	float fw = w - label_width();
 	switch (c.type) {
 	case CT::OutputMatches:
 		row_label("Program"); dirty |= text_field("##cp", c.program, fw);
@@ -69,7 +73,7 @@ static void edit_condition(Condition &c, bool &dirty, float w)
 	case CT::CommandSucceeds: row_label("Command"); dirty |= text_field("##ctx", c.text, fw); break;
 	case CT::ExitCodeIs:
 		row_label("Program");   dirty |= text_field("##cp", c.program, fw);
-		row_label("Exit code"); ImGui::SetNextItemWidth(100); dirty |= ImGui::InputInt("##cn", &c.number);
+		row_label("Exit code"); ImGui::SetNextItemWidth(px(100)); dirty |= ImGui::InputInt("##cn", &c.number);
 		break;
 	case CT::UserSaysYes: row_label("Question"); dirty |= text_field("##ctx", c.text, fw); break;
 	}
@@ -77,10 +81,10 @@ static void edit_condition(Condition &c, bool &dirty, float w)
 
 static void edit_run_fields(Block &b, bool &dirty, float w)
 {
-	float fw = w - kLabelWidth;
+	float fw = w - label_width();
 	row_label("Name");    dirty |= text_field("##n", b.name, fw);
 	row_label("Command"); dirty |= text_field("##c", b.command, fw, b.shell);
-	ImGui::SetCursorPosX(kLabelWidth);
+	ImGui::SetCursorPosX(label_width());
 #ifdef _WIN32
 	dirty |= ImGui::Checkbox("shell (cmd /c)", &b.shell);
 #else
@@ -88,18 +92,18 @@ static void edit_run_fields(Block &b, bool &dirty, float w)
 #endif
 	ImGui::SameLine();
 	dirty |= ImGui::Checkbox("skip if already running", &b.skip_if_running);
-	ImGui::SetCursorPosX(kLabelWidth);
+	ImGui::SetCursorPosX(label_width());
 	dirty |= ImGui::Checkbox("blocking", &b.blocking);
 	if (b.blocking) {
 		ImGui::SameLine(); ImGui::TextUnformatted("min s"); ImGui::SameLine();
-		ImGui::SetNextItemWidth(70); dirty |= ImGui::InputFloat("##min", &b.min_s, 0, 0, "%.1f");
+		ImGui::SetNextItemWidth(px(70)); dirty |= ImGui::InputFloat("##min", &b.min_s, 0, 0, "%.1f");
 		ImGui::SameLine(); ImGui::TextUnformatted("max s (-1 = none)"); ImGui::SameLine();
-		ImGui::SetNextItemWidth(70); dirty |= ImGui::InputFloat("##max", &b.max_s, 0, 0, "%.1f");
+		ImGui::SetNextItemWidth(px(70)); dirty |= ImGui::InputFloat("##max", &b.max_s, 0, 0, "%.1f");
 	}
 	if (ImGui::TreeNode("more")) {
-		row_label("Working dir"); dirty |= text_field("##cwd", b.cwd, fw - 20);
-		row_label("Env K=V");     dirty |= text_field("##env", b.env, fw - 20, true);
-		row_label("Match");       dirty |= text_field("##m", b.match, fw - 20);
+		row_label("Working dir"); dirty |= text_field("##cwd", b.cwd, fw - px(20));
+		row_label("Env K=V");     dirty |= text_field("##env", b.env, fw - px(20), true);
+		row_label("Match");       dirty |= text_field("##m", b.match, fw - px(20));
 		ImGui::TextDisabled("Match: comma separated parts of the process command line (detect / kill it)");
 		ImGui::TreePop();
 	}
@@ -112,7 +116,7 @@ static void edit_seq(Seq &seq, const SeqPath &path, bool &dirty);
 static void nested(const char *label, Seq &s, const SeqPath &parent, int idx, bool other, bool &dirty)
 {
 	ImGui::TextUnformatted(label);
-	ImGui::Indent(16);
+	ImGui::Indent(px(16));
 	ImGui::PushID(label);
 	if (parent.can_descend()) edit_seq(s, parent.child(idx, other), dirty);
 	else ImGui::TextDisabled("(nested too deep to edit here)");
@@ -138,7 +142,7 @@ static void block_header(Seq &seq, const SeqPath &path, int i, const BlockInfo &
 		ImGui::SameLine();
 		ImGui::TextDisabled("%s", b.name.c_str());
 	}
-	ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 76);
+	ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - px(76));
 	if (ImGui::SmallButton("^") && i > 0) request_move(path, i, path, i - 1);
 	ImGui::SameLine();
 	if (ImGui::SmallButton("v") && i + 1 < (int)seq.size()) request_move(path, i, path, i + 2);
@@ -156,21 +160,21 @@ static void edit_block(Seq &seq, const SeqPath &path, int i, bool &dirty)
 	bg.w = 0.28f;
 	ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
 	ImGui::PushStyleColor(ImGuiCol_Border, to_imvec(bi.color));
-	ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, px(6));
 	ImGui::BeginChild("blk", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
 
 	block_header(seq, path, i, bi);
 
 	float w = ImGui::GetContentRegionAvail().x;
-	float fw = w - kLabelWidth;
+	float fw = w - label_width();
 	switch (b.type) {
 	case BT::Run: edit_run_fields(b, dirty, w); break;
 	case BT::WaitSeconds:
-		row_label("Seconds"); ImGui::SetNextItemWidth(90); dirty |= ImGui::InputFloat("##s", &b.seconds, 0, 0, "%.1f");
+		row_label("Seconds"); ImGui::SetNextItemWidth(px(90)); dirty |= ImGui::InputFloat("##s", &b.seconds, 0, 0, "%.1f");
 		break;
 	case BT::WaitUntil:
 		edit_condition(b.cond, dirty, w);
-		row_label("Timeout s"); ImGui::SetNextItemWidth(90); dirty |= ImGui::InputFloat("##s", &b.seconds, 0, 0, "%.1f");
+		row_label("Timeout s"); ImGui::SetNextItemWidth(px(90)); dirty |= ImGui::InputFloat("##s", &b.seconds, 0, 0, "%.1f");
 		ImGui::SameLine(); ImGui::TextDisabled("-1 = forever"); ImGui::SameLine();
 		dirty |= ImGui::Checkbox("stop sequence on timeout", &b.stop_on_timeout);
 		break;
@@ -180,7 +184,7 @@ static void edit_block(Seq &seq, const SeqPath &path, int i, bool &dirty)
 		nested("else", b.else_body, path, i, true, dirty);
 		break;
 	case BT::RepeatN:
-		row_label("Times"); ImGui::SetNextItemWidth(90); dirty |= ImGui::InputInt("##n", &b.count);
+		row_label("Times"); ImGui::SetNextItemWidth(px(90)); dirty |= ImGui::InputInt("##n", &b.count);
 		ImGui::SameLine(); ImGui::TextDisabled("-1 = forever");
 		nested("do", b.body, path, i, false, dirty);
 		break;
@@ -196,7 +200,7 @@ static void edit_block(Seq &seq, const SeqPath &path, int i, bool &dirty)
 	case BT::KillAll: ImGui::TextDisabled("Every program from the Run blocks, however it was started"); break;
 	case BT::Message:
 		row_label("Text"); dirty |= text_field("##t", b.command, fw);
-		ImGui::SetCursorPosX(kLabelWidth);
+		ImGui::SetCursorPosX(label_width());
 		dirty |= ImGui::Checkbox("show as popup", &b.popup);
 		break;
 	case BT::Stop: ImGui::TextDisabled("Ends the sequence here"); break;
@@ -207,7 +211,7 @@ static void edit_block(Seq &seq, const SeqPath &path, int i, bool &dirty)
 	}
 	if (b.type == BT::KillProgram || b.type == BT::KillMatching || b.type == BT::KillAll) {
 		row_label("Graceful s");
-		ImGui::SetNextItemWidth(90);
+		ImGui::SetNextItemWidth(px(90));
 		dirty |= ImGui::InputFloat("##g", &b.graceful_s, 0, 0, "%.1f");
 		ImGui::SameLine();
 		ImGui::TextDisabled("0 = hard kill now, else ask to quit first (SIGTERM / close its windows), hard kill after this long");
@@ -269,7 +273,7 @@ static void button_panel(Editor &ed, bool &dirty)
 	for (int i = 0; i < (int)doc.buttons.size(); i++) {
 		Button &b = doc.buttons[i];
 		ImGui::PushID(i);
-		ImGui::ColorButton("##c", to_imvec(b.color), ImGuiColorEditFlags_NoTooltip, ImVec2(14, 14));
+		ImGui::ColorButton("##c", to_imvec(b.color), ImGuiColorEditFlags_NoTooltip, ImVec2(px(14), px(14)));
 		ImGui::SameLine();
 		if (ImGui::Selectable(b.name.c_str(), ed.selected == i)) ed.selected = i;
 		ImGui::PopID();
@@ -337,8 +341,15 @@ static void button_panel(Editor &ed, bool &dirty)
 Editor::Editor(const std::string &p) : path(p)
 {
 	std::string err;
-	if (load_document(path, doc, &err)) {
+	bool incompatible = false;
+	if (load_document(path, doc, &err, &incompatible)) {
 		status = "Opened " + path;
+		remember_file();
+	} else if (incompatible) { // saving must not replace it: start an untitled file instead
+		status = err;
+		path.clear();
+		doc = Document();
+		doc.buttons.push_back(Button());
 	} else {
 		std::error_code ec;
 		status = fs::exists(path_of(path), ec) ? "Cannot read the file (" + err + "): saving will replace it"
@@ -368,7 +379,13 @@ bool Editor::load(const std::string &file)
 	modified = false;
 	selected = 0;
 	status = "Opened " + path;
+	remember_file();
 	return true;
+}
+
+void Editor::remember_file()
+{
+	if (!path.empty()) save_last_file(path);
 }
 
 bool Editor::write(const std::string &file)
@@ -381,6 +398,7 @@ bool Editor::write(const std::string &file)
 	saved_json = document_json(doc);
 	modified = false;
 	status = "Saved " + path;
+	remember_file();
 	return true;
 }
 
@@ -477,6 +495,21 @@ void Editor::menu_bar()
 			if (ImGui::MenuItem("Quit", "Ctrl+Q")) request(Quit);
 			ImGui::EndMenu();
 		}
+		if (ImGui::BeginMenu("Interface")) {
+			ImGui::SeparatorText("UI scale");
+			for (int i = 0; i < kUiScaleCount; i++) {
+				char label[16];
+				snprintf(label, sizeof label, "%gx", kUiScales[i]);
+				if (ImGui::MenuItem(label, nullptr, std::abs(ui_scale() - kUiScales[i]) < 0.01f)) set_ui_scale(kUiScales[i]);
+			}
+			ImGui::Separator();
+			char fit[48];
+			snprintf(fit, sizeof fit, "Fit the screen (%gx)", screen_ui_scale());
+			if (ImGui::MenuItem(fit, "Ctrl+0")) set_ui_scale(0);
+			if (ImGui::MenuItem("Bigger", "Ctrl+=")) step_ui_scale(+1);
+			if (ImGui::MenuItem("Smaller", "Ctrl+-")) step_ui_scale(-1);
+			ImGui::EndMenu();
+		}
 		ImGui::EndMenuBar();
 	}
 	if (ask_reset) ImGui::OpenPopup("Reset?");
@@ -492,6 +525,7 @@ void Editor::shortcuts()
 	if (key(ImGuiMod_Ctrl | ImGuiKey_S)) save();
 	if (key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)) save_as();
 	if (key(ImGuiMod_Ctrl | ImGuiKey_Q)) request(Quit);
+	ui_scale_shortcuts();
 }
 
 void Editor::popups()
@@ -508,7 +542,7 @@ void Editor::popups()
 		const char *what = pending == New ? "starting a new file" : pending == Open ? "opening another file" : "closing";
 		ImGui::Text("Save the changes to '%s' before %s?", name.c_str(), what);
 		ImGui::Spacing();
-		if (ImGui::Button("Save", ImVec2(110, 0))) {
+		if (ImGui::Button("Save", ImVec2(px(110), 0))) {
 			if (path.empty()) {
 				after_save = pending;
 				save_as();
@@ -519,13 +553,13 @@ void Editor::popups()
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Don't save", ImVec2(110, 0))) {
+		if (ImGui::Button("Don't save", ImVec2(px(110), 0))) {
 			run(pending);
 			pending = None;
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Cancel", ImVec2(110, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+		if (ImGui::Button("Cancel", ImVec2(px(110), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
 			pending = None;
 			ImGui::CloseCurrentPopup();
 		}
@@ -536,13 +570,13 @@ void Editor::popups()
 	if (ImGui::BeginPopupModal("Reload?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
 		ImGui::Text("Discard your unsaved changes and reload '%s' from disk?", name.c_str());
 		ImGui::Spacing();
-		if (ImGui::Button("Reload", ImVec2(110, 0))) {
+		if (ImGui::Button("Reload", ImVec2(px(110), 0))) {
 			run(Reload);
 			pending = None;
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Cancel", ImVec2(110, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+		if (ImGui::Button("Cancel", ImVec2(px(110), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
 			pending = None;
 			ImGui::CloseCurrentPopup();
 		}
@@ -553,14 +587,14 @@ void Editor::popups()
 	if (ImGui::BeginPopupModal("Reset?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
 		ImGui::TextUnformatted("Replace every button with the default ones?");
 		ImGui::Spacing();
-		if (ImGui::Button("Reset", ImVec2(110, 0))) {
+		if (ImGui::Button("Reset", ImVec2(px(110), 0))) {
 			doc = default_document();
 			selected = 0;
 			changed();
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Cancel", ImVec2(110, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+		if (ImGui::Button("Cancel", ImVec2(px(110), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
 		ImGui::EndPopup();
 	}
 
@@ -589,8 +623,10 @@ void Editor::draw()
 	bool dirty = false;
 	float status_h = ImGui::GetFrameHeightWithSpacing();
 	ImGui::BeginChild("main", ImVec2(0, -status_h));
-	if (ImGui::BeginTable("layout", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
-		ImGui::TableSetupColumn("buttons", ImGuiTableColumnFlags_WidthFixed, 250);
+	// A new table per UI scale: a table keeps its column widths, this gives the left one its new default.
+	std::string layout = "layout" + std::to_string((int)(ui_scale() * 100));
+	if (ImGui::BeginTable(layout.c_str(), 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
+		ImGui::TableSetupColumn("buttons", ImGuiTableColumnFlags_WidthFixed, px(250));
 		ImGui::TableSetupColumn("blocks", ImGuiTableColumnFlags_WidthStretch);
 		ImGui::TableNextColumn();
 		ImGui::BeginChild("left");
@@ -602,7 +638,7 @@ void Editor::draw()
 		if (selected >= 0 && selected < (int)doc.buttons.size()) {
 			Button &b = doc.buttons[selected];
 			ImGui::PushStyleColor(ImGuiCol_ChildBg, to_imvec(b.color));
-			ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+			ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, px(10));
 			ImGui::BeginChild("hat", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
 			ImGui::TextColored(ImVec4(1, 1, 1, 1), "When \"%s\" is pressed", b.name.c_str());
 			ImGui::EndChild();

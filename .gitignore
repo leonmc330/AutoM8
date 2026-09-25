@@ -16,3 +16,6 @@
 .idea/
 *.swp
 .DS_Store
+
+# local notes for Claude Code
+CLAUDE.md

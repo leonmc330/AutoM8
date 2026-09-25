@@ -69,7 +69,15 @@ struct Document {
 	Button *find(const std::string &name);
 };
 
-bool load_document(const std::string &path, Document &doc, std::string *error = nullptr);
+// Every file carries "version": the format it was written in (files from before it are version 1).
+// A program reads kMinDocumentVersion..kDocumentVersion and refuses the others, so it never
+// runs or saves over a file whose format it doesn't know. Bump kDocumentVersion when the format
+// changes; raise kMinDocumentVersion only when older files can't be read anymore.
+constexpr int kDocumentVersion = 1;
+constexpr int kMinDocumentVersion = 1;
+
+// false: `error` says why, `incompatible` is set when the file's version is the reason.
+bool load_document(const std::string &path, Document &doc, std::string *error = nullptr, bool *incompatible = nullptr);
 bool save_document(const std::string &path, const Document &doc); // atomic: the old file survives a failure
 std::string document_json(const Document &doc); // what save_document writes
 Document default_document(); // a small example, written on first run

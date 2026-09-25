@@ -37,6 +37,7 @@ struct Editor {
 private:
 	bool write(const std::string &file);
 	void changed() { modified = document_json(doc) != saved_json; }
+	void remember_file(); // opened by default next time
 	void poll_dialog();
 	void menu_bar();
 	void shortcuts();

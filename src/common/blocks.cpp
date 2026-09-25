@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 
 namespace fs = std::filesystem;
 
@@ -142,8 +143,9 @@ static Seq seq_from_json(const json &a)
 	return s;
 }
 
-bool load_document(const std::string &path, Document &doc, std::string *error)
+bool load_document(const std::string &path, Document &doc, std::string *error, bool *incompatible)
 {
+	if (incompatible) *incompatible = false;
 	std::ifstream f(path_of(path));
 	if (!f) {
 		if (error) *error = "cannot open " + path;
@@ -151,6 +153,20 @@ bool load_document(const std::string &path, Document &doc, std::string *error)
 	}
 	try {
 		json j = json::parse(f);
+		int version = 1; // no "version": written before there was one
+		if (j.contains("version")) {
+			if (!j["version"].is_number_integer()) throw std::runtime_error("\"version\" is not a whole number");
+			version = j["version"].get<int>();
+		}
+		if (version < kMinDocumentVersion || version > kDocumentVersion) {
+			if (incompatible) *incompatible = true;
+			if (error)
+				*error = path + ": file format version " + std::to_string(version) +
+				         (version > kDocumentVersion ? ", made by a newer AutoM8" : ", too old") +
+				         " (this one reads versions " + std::to_string(kMinDocumentVersion) + " to " +
+				         std::to_string(kDocumentVersion) + ")";
+			return false;
+		}
 		Document d;
 		if (j.contains("buttons")) {
 			for (auto &jb : j["buttons"]) {
@@ -183,7 +199,7 @@ std::string document_json(const Document &doc)
 		buttons.push_back({{"name", b.name},
 		                   {"color", {b.color.r, b.color.g, b.color.b, b.color.a}},
 		                   {"sequence", seq_to_json(b.seq)}});
-	json j = {{"buttons", buttons}};
+	json j = {{"version", kDocumentVersion}, {"buttons", buttons}};
 	return j.dump(2) + "\n";
 }
 
