@@ -126,13 +126,9 @@ bool get_env(const std::string &name, std::string &value)
 	return true;
 }
 
-std::string document_path(const std::vector<std::string> &args)
+std::string document_path(const std::string &given)
 {
-	for (size_t i = 1; i < args.size(); i++) {
-		const std::string &a = args[i];
-		if (a == "--run") { i++; continue; } // skip the option and its value
-		if (!a.empty() && a[0] != '-') return path_string(fs::absolute(path_of(expand(a))));
-	}
+	if (!given.empty()) return path_string(fs::absolute(path_of(expand(given))));
 	// A sequences.json next to the program wins (portable install); else the user config folder.
 	fs::path portable = path_of(exe_dir()) / "sequences.json";
 	std::error_code ec;

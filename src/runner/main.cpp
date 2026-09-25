@@ -5,6 +5,7 @@
 #include "window.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
@@ -13,6 +14,8 @@
 #include <string>
 #include <thread>
 
+namespace fs = std::filesystem;
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -20,15 +23,23 @@
 #endif
 
 static const char kUsage[] =
-	"usage: autom8 [FILE.json] [--run NAME [--verbose] [--stay]] | --version\n"
+	"usage:\n"
+	"  autom8 [--sequence FILE]                  open the window\n"
+	"  autom8 [--sequence FILE] --list           print the buttons, one per line\n"
+	"  autom8 [--sequence FILE] --press NAME     press a button in the terminal, no window\n"
+	"  autom8 --version | --help\n"
 	"\n"
-	"  autom8                    window for the default sequence file\n"
-	"  autom8 FILE.json          window for another file\n"
-	"  --run NAME                run one button in the terminal, no window\n"
-	"  --verbose                 also print the output of every program\n"
-	"  --stay                    keep printing after the sequence, until Ctrl+C\n"
+	"options:\n"
+	"  --sequence FILE   the sequence file to use (FILE alone works too)\n"
+	"  --list            print the names of the buttons in the file\n"
+	"  --press NAME      run that button's sequence and exit when it is done\n"
+	"  --verbose         with --press: also print the output of every program\n"
+	"  --stay            with --press: keep printing after the sequence, until Ctrl+C\n"
 	"\n"
-	"The default file is sequences.json next to this program if it exists,\n"
+	"exit codes (--list / --press): 0 ok, 1 the sequence threw an error or the file\n"
+	"can't be read, 2 wrong arguments / no such button / no such file, 130 Ctrl+C\n"
+	"\n"
+	"Without --sequence: sequences.json next to this program if it exists,\n"
 #ifdef _WIN32
 	"else %APPDATA%\\autom8\\sequences.json.\n";
 #else
@@ -78,7 +89,7 @@ static int run_headless(Runner &r, const std::string &button, bool verbose, bool
 		}
 	};
 	if (!r.doc.find(button)) {
-		fprintf(stderr, "autom8: no button named '%s' in %s\n", button.c_str(), r.path.c_str());
+		fprintf(stderr, "autom8: no button named '%s' in %s (see --list)\n", button.c_str(), r.path.c_str());
 		return 2;
 	}
 	catch_ctrl_c();
@@ -105,10 +116,7 @@ static int run_headless(Runner &r, const std::string &button, bool verbose, bool
 			}
 			r.ask_answer = !answer.empty() && (answer[0] == 'y' || answer[0] == 'Y');
 		}
-		if (!r.popup_text.empty()) {
-			printf("%s\n", r.popup_text.c_str());
-			r.popup_text.clear();
-		}
+		r.popup_text.clear(); // already printed: every message is in the history too
 		std::this_thread::sleep_for(std::chrono::milliseconds(30));
 	}
 	flush_history();
@@ -140,36 +148,64 @@ int main(int argc, char **argv)
 	signal(SIGPIPE, SIG_IGN); // children get it back (see Proc::spawn)
 #endif
 	std::vector<std::string> args = utf8_args(argc, argv);
-	std::string run_button;
-	bool verbose = false, stay = false;
+	std::string file, press;
+	bool list = false, verbose = false, stay = false;
+	auto usage_error = [](const std::string &msg) {
+		fprintf(stderr, "autom8: %s\n\n%s", msg.c_str(), kUsage);
+		return 2;
+	};
 	for (size_t i = 1; i < args.size(); i++) {
 		const std::string &a = args[i];
+		auto value = [&](std::string &out) {
+			if (i + 1 >= args.size()) return false;
+			out = args[++i];
+			return true;
+		};
 		if (a == "-h" || a == "--help") {
 			fputs(kUsage, stdout);
 			return 0;
-		}
-		if (a == "--version") {
+		} else if (a == "--version") {
 			puts("autom8 " AUTOM8_VERSION);
 			return 0;
-		}
-		if (a == "--run") {
-			if (i + 1 >= args.size()) {
-				fputs("autom8: --run needs a button name\n", stderr);
-				return 2;
-			}
-			run_button = args[++i];
+		} else if (a == "--sequence") {
+			if (!value(file)) return usage_error("--sequence needs a file");
+		} else if (a == "--press" || a == "--run") { // --run: the old name
+			if (!value(press)) return usage_error(a + " needs a button name");
+		} else if (a == "--list") {
+			list = true;
 		} else if (a == "--verbose") {
 			verbose = true;
 		} else if (a == "--stay") {
 			stay = true;
 		} else if (!a.empty() && a[0] == '-') {
-			fprintf(stderr, "autom8: unknown option %s\n\n%s", a.c_str(), kUsage);
-			return 2;
+			return usage_error("unknown option " + a);
+		} else if (file.empty()) {
+			file = a;
+		} else {
+			return usage_error("one sequence file only (got " + file + " and " + a + ")");
 		}
 	}
+	if (list && !press.empty()) return usage_error("--list and --press can't be used together");
+	if ((verbose || stay) && press.empty()) return usage_error("--verbose and --stay only work with --press");
 
-	Runner r(document_path(args));
-	if (!run_button.empty()) return run_headless(r, run_button, verbose, stay);
+	// Terminal modes never create a file: a typo in the path must be an error, not an empty file.
+	bool terminal = list || !press.empty();
+	std::error_code ec;
+	if (terminal && !file.empty() && !fs::exists(path_of(document_path(file)), ec)) {
+		fprintf(stderr, "autom8: no such file: %s\n", file.c_str());
+		return 2;
+	}
+
+	Runner r(document_path(file));
+	if (terminal && !r.load_error.empty()) {
+		fprintf(stderr, "autom8: cannot read %s\n", r.load_error.c_str()); // the error names the file
+		return 1;
+	}
+	if (list) {
+		for (auto &b : r.doc.buttons) puts(b.name.c_str());
+		return 0;
+	}
+	if (!press.empty()) return run_headless(r, press, verbose, stay);
 #ifdef _WIN32
 	hide_own_console();
 #endif

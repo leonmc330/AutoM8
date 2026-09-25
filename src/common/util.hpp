@@ -17,9 +17,9 @@ std::string config_dir();
 // The program's arguments as UTF-8 (on Windows, from the UTF-16 command line), argv[0] included.
 std::vector<std::string> utf8_args(int argc, char **argv);
 
-// The sequence file: the first argument that is not an option, else sequences.json next to
-// the program if there is one, else sequences.json in config_dir().
-std::string document_path(const std::vector<std::string> &args);
+// The sequence file to use: `given` (made absolute, ~ and $VARS expanded) if not empty,
+// else sequences.json next to the program if there is one, else sequences.json in config_dir().
+std::string document_path(const std::string &given);
 
 // UTF-8 string <-> filesystem path (plain on Linux; UTF-16 underneath on Windows).
 std::filesystem::path path_of(const std::string &utf8);

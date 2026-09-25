@@ -90,7 +90,9 @@ jobs:
         run: |
           ctest --test-dir build --output-on-failure
           ./build/autom8 --version
-          ./build/autom8 "$RUNNER_TEMP/hello.json" --run Hello
+          ./build/autom8 --press Hello   # first run: creates the default file with the example buttons
+          test "$(./build/autom8 --list)" = "$(printf 'Hello\nCountdown')"
+          test "$(./build/autom8 --sequence examples/web-server.json --list)" = "$(printf 'Start\nStatus\nStop')"
       - name: Test with AddressSanitizer + UBSan
         if: matrix.sanitizers
         run: |
@@ -201,10 +203,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           Expand-Archive autom8-windows-${{ matrix.arch }}.zip -DestinationPath .
           ./autom8-windows-${{ matrix.arch }}/autom8.exe --version
-          ./autom8-windows-${{ matrix.arch }}/autom8.exe "$env:RUNNER_TEMP\hello.json" --run Hello
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          ./autom8-windows-${{ matrix.arch }}/autom8.exe "$env:RUNNER_TEMP\hello.json" --run Countdown
+          $autom8 = "./autom8-windows-${{ matrix.arch }}/autom8.exe"
+          & $autom8 --press Hello   # first run: creates the default file with the example buttons
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $autom8 --press Countdown
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $buttons = & $autom8 --list
+          if (($buttons -join ',') -ne 'Hello,Countdown') { Write-Error "unexpected --list output: $buttons"; exit 1 }
+          $buttons = & $autom8 --sequence "./autom8-windows-${{ matrix.arch }}/examples/web-server.json" --list
+          if (($buttons -join ',') -ne 'Start,Status,Stop') { Write-Error "unexpected --list output: $buttons"; exit 1 }
 
   # Beta release, only from main and only when every build and test above passed.
   release:

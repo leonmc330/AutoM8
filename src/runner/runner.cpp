@@ -52,6 +52,7 @@ Runner::Runner(const std::string &p) : path(p)
 	if (load_document(path, d, &err)) {
 		set_doc(std::move(d));
 	} else if (std::error_code ec; fs::exists(path_of(path), ec)) {
+		load_error = err;
 		say("Cannot read " + path + ": " + err);
 	} else {
 		set_doc(default_document()); // first run: create the file

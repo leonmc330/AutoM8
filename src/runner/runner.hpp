@@ -15,6 +15,7 @@
 
 struct Runner {
 	std::string path; // the sequence file
+	std::string load_error; // why the file could not be read ("" = it was read, or just created)
 	Document doc;
 	std::map<std::string, Proc> procs; // programs started by Run blocks, by name
 	std::string status = "Ready.";

@@ -103,13 +103,24 @@ next to them. Visual Studio (MSVC) is supported by the CMake files, but CI doesn
 ## Use
 
 ```sh
-./autom8-editor               # build your buttons
-./autom8                      # press them
-./autom8 --run Start          # run the "Start" button in the terminal, no window
-./autom8 --run Start --verbose --stay   # also print every program's output, keep going until Ctrl+C
-./autom8 my-other-file.json   # both programs take another sequence file
-./autom8 --version            # which release this is (local builds say "dev")
+./autom8-editor                       # build your buttons
+./autom8                              # press them in the window
+./autom8 --sequence my-file.json      # both programs take another sequence file
+./autom8 --version                    # which release this is (local builds say "dev")
 ```
+
+### From the terminal (no window)
+
+```sh
+./autom8 --sequence examples/web-server.json --list          # the buttons, one per line
+./autom8 --sequence examples/web-server.json --press Start   # press one, exit when it's done
+./autom8 --press Start --verbose --stay   # also print every program's output, keep going until Ctrl+C
+```
+
+Questions ("user answers Yes to") are asked on the terminal. The exit code tells scripts
+what happened: `0` done, `1` the sequence threw an error (or the file can't be read),
+`2` wrong arguments / no such button / no such file, `130` stopped with Ctrl+C.
+`--sequence` can be left out to use the default file, and `autom8 FILE.json` still works.
 
 The default file is `sequences.json` **next to the programs** if one is there (handy
 for a portable folder), else `~/.config/autom8/sequences.json` on Linux and
