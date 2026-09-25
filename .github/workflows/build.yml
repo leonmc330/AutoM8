@@ -229,14 +229,25 @@ jobs:
       - id: version
         run: |
           .github/scripts/version.sh >> "$GITHUB_OUTPUT"
-          .github/scripts/version.sh | sed -n 's/^label=\(.*\)/Release: **\1**/p' >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/download-artifact@v4
+          # GitHub refuses to tag a commit whose workflow files differ from the tip of main, and a
+          # newer run is queued anyway: if main moved on during this run, let that run publish.
+          tip=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$tip" != "$GITHUB_SHA" ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::main moved on to ${tip:0:7} during this run: its own run publishes the release"
+          else
+            .github/scripts/version.sh | sed -n 's/^label=\(.*\)/Release: **\1**/p' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.version.outputs.stale != 'true'
+        uses: actions/download-artifact@v4
         with:
           pattern: autom8-*
           merge-multiple: true
       - name: Put the version in the file names
+        if: steps.version.outputs.stale != 'true'
         run: for f in autom8-*.tar.gz autom8-*.zip; do mv "$f" "${f/autom8-/autom8-${{ steps.version.outputs.label }}-}"; done
-      - uses: softprops/action-gh-release@v2
+      - if: steps.version.outputs.stale != 'true'
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.label }}
           target_commitish: ${{ github.sha }}
