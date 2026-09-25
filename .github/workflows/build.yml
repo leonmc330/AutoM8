@@ -3,6 +3,9 @@ name: build
 # Runs only when code changes (not README / LICENSE / examples): builds Linux x86_64 + arm64
 # and Windows x86_64 + arm64 and runs the tests on each, natively.
 # On main, when everything passes, it publishes a beta release numbered v001, v002, ... v999.
+#
+# Kept cheap: ccache (SDL2 / PCRE2 / ImGui are not recompiled every run), few jobs
+# (billing rounds every job up to a whole minute, Windows minutes count double), timeouts.
 
 on:
   push:
@@ -15,6 +18,7 @@ on:
       - "cmake/**"
       - "CMakeLists.txt"
       - ".github/workflows/build.yml"
+      - ".github/scripts/**"
   pull_request:
     paths:
       - "src/**"
@@ -24,6 +28,7 @@ on:
       - "cmake/**"
       - "CMakeLists.txt"
       - ".github/workflows/build.yml"
+      - ".github/scripts/**"
   workflow_dispatch: # "Run workflow" button in the Actions tab
 
 # One run at a time per branch, so two quick pushes to main can't take the same number.
@@ -35,68 +40,67 @@ concurrency:
 env:
   LLVM_MINGW: llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64
   LLVM_MINGW_SHA256: bb7bb7654b33d5aa8712acb837c963b2e0c56352560c76105270a3268c665c21
+  # every CMake build goes through ccache
+  CMAKE_C_COMPILER_LAUNCHER: ccache
+  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  CCACHE_MAXSIZE: 400M
+  CCACHE_SLOPPINESS: include_file_mtime,include_file_ctime # downloaded sources get fresh mtimes
 
 jobs:
-  # Picks the release number: the highest existing vNNN tag + 1 (main only; elsewhere "dev").
-  version:
-    runs-on: ubuntu-latest
-    outputs:
-      number: ${{ steps.pick.outputs.number }}
-      label: ${{ steps.pick.outputs.label }}
-      publish: ${{ steps.pick.outputs.publish }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # all tags
-      - id: pick
-        run: |
-          if [ "$GITHUB_EVENT_NAME" != pull_request ] && [ "$GITHUB_REF" = refs/heads/main ]; then
-            last=$(git tag -l 'v[0-9][0-9][0-9]' | sed 's/^v//' | sort -n | tail -1)
-            number=$((10#${last:-0} + 1))
-            if [ "$number" -gt 999 ]; then
-              echo "::error::v999 reached: time for a new version scheme"
-              exit 1
-            fi
-            printf 'number=%d\nlabel=v%03d\npublish=true\n' "$number" "$number" >> "$GITHUB_OUTPUT"
-            printf 'Release: **v%03d** (published if every job passes)\n' "$number" >> "$GITHUB_STEP_SUMMARY"
-          else
-            printf 'number=0\nlabel=dev\npublish=false\n' >> "$GITHUB_OUTPUT"
-          fi
-
   linux:
     name: linux-${{ matrix.arch }}
-    needs: version
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x86_64
             runner: ubuntu-22.04 # oldest glibc we build on = widest compatibility
+            sanitizers: true     # the ASan + UBSan test run rides along here (no extra job)
           - arch: arm64
             runner: ubuntu-22.04-arm
+            sanitizers: false
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - id: version
+        run: .github/scripts/version.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-linux-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: ccache-linux-${{ matrix.arch }}-
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          # SDL2 is built from source: it needs the X11 / Wayland headers (it loads the libraries at run time)
-          sudo apt-get install -y build-essential cmake ninja-build pkg-config \
+          # SDL2 is built from source: it needs the X11 / Wayland headers (it loads the libraries at run time).
+          # gcc and cmake come with the runner image.
+          sudo apt-get install -y --no-install-recommends ninja-build ccache pkg-config libpcre2-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev \
             libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgles2-mesa-dev \
             libdrm-dev libgbm-dev libdecor-0-dev
       - name: Build (SDL2 + PCRE2 static)
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DAUTOM8_VENDORED_DEPS=ON \
-            -DAUTOM8_BUILD_NUMBER=${{ needs.version.outputs.number }}
+            -DAUTOM8_BUILD_NUMBER=${{ steps.version.outputs.number }}
           cmake --build build
       - name: Test
         run: |
           ctest --test-dir build --output-on-failure
           ./build/autom8 --version
           ./build/autom8 "$RUNNER_TEMP/hello.json" --run Hello
+      - name: Test with AddressSanitizer + UBSan
+        if: matrix.sanitizers
+        run: |
+          # engine + tests only (no GUI, so no SDL to build), system PCRE2
+          cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DAUTOM8_GUI=OFF -DAUTOM8_SANITIZE=ON
+          cmake --build build-asan
+          ctest --test-dir build-asan --output-on-failure
       - name: Package
         run: |
+          ccache --show-stats | head -12
           name=autom8-linux-${{ matrix.arch }}
           mkdir -p "$name"
           cp build/autom8 build/autom8-editor build/THIRD_PARTY_LICENSES.txt README.md LICENSE "$name/"
@@ -106,62 +110,70 @@ jobs:
         with:
           name: autom8-linux-${{ matrix.arch }}
           path: autom8-linux-${{ matrix.arch }}.tar.gz
+          retention-days: 7
 
-  linux-sanitizers:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install dependencies (system SDL2 + PCRE2)
-        run: sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build pkg-config libsdl2-dev libpcre2-dev
-      - name: Build with AddressSanitizer + UBSan
-        run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DAUTOM8_SANITIZE=ON
-          cmake --build build
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
-
+  # Both Windows builds in one job: one llvm-mingw download, one job start-up.
   windows-build:
-    name: windows-build-${{ matrix.arch }}
-    needs: version
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x86_64, arm64]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - id: version
+        run: .github/scripts/version.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-windows-${{ github.sha }}
+          restore-keys: ccache-windows-
       - name: Install llvm-mingw
         run: |
-          sudo apt-get update && sudo apt-get install -y ninja-build
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build ccache
           curl -fsSL -o llvm-mingw.tar.xz "https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/$LLVM_MINGW.tar.xz"
           echo "$LLVM_MINGW_SHA256  llvm-mingw.tar.xz" | sha256sum -c -
           tar xf llvm-mingw.tar.xz -C "$RUNNER_TEMP"
+          rm llvm-mingw.tar.xz
           echo "LLVM_MINGW=$RUNNER_TEMP/$LLVM_MINGW" >> "$GITHUB_ENV"
-      - name: Build (cross-compile)
+      - name: Build and package (cross-compile)
         run: |
-          mingw_arch=${{ matrix.arch }}
-          [ "$mingw_arch" = arm64 ] && mingw_arch=aarch64
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/llvm-mingw.cmake -DMINGW_ARCH=$mingw_arch \
-            -DAUTOM8_BUILD_NUMBER=${{ needs.version.outputs.number }}
-          cmake --build build
-      - name: Package
-        run: |
-          name=autom8-windows-${{ matrix.arch }}
-          mkdir -p "$name"
-          cp build/autom8.exe build/autom8-editor.exe build/THIRD_PARTY_LICENSES.txt README.md LICENSE "$name/"
-          cp -r examples "$name/"
-          zip -r "$name.zip" "$name"
+          for arch in x86_64 arm64; do
+            mingw_arch=$arch
+            [ "$arch" = arm64 ] && mingw_arch=aarch64
+            cmake -S . -B build-$arch -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE=cmake/llvm-mingw.cmake -DMINGW_ARCH=$mingw_arch \
+              -DAUTOM8_BUILD_NUMBER=${{ steps.version.outputs.number }}
+            cmake --build build-$arch
+
+            name=autom8-windows-$arch
+            mkdir -p "$name" "tests-$arch"
+            cp build-$arch/autom8.exe build-$arch/autom8-editor.exe build-$arch/THIRD_PARTY_LICENSES.txt README.md LICENSE "$name/"
+            cp -r examples "$name/"
+            zip -qr "$name.zip" "$name"
+            cp build-$arch/autom8-tests.exe "tests-$arch/"
+          done
+          ccache --show-stats | head -12
       - uses: actions/upload-artifact@v4
         with:
-          name: autom8-windows-${{ matrix.arch }}
-          path: autom8-windows-${{ matrix.arch }}.zip
+          name: autom8-windows-x86_64
+          path: autom8-windows-x86_64.zip
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
-          name: tests-windows-${{ matrix.arch }}
-          path: build/autom8-tests.exe
+          name: autom8-windows-arm64
+          path: autom8-windows-arm64.zip
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tests-windows-x86_64
+          path: tests-x86_64/autom8-tests.exe
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tests-windows-arm64
+          path: tests-arm64/autom8-tests.exe
+          retention-days: 1
 
   # The Windows builds are made on Linux: run them on real Windows machines of each architecture.
+  # Kept as short as possible (Windows minutes count double): download, run, done.
   windows-test:
     name: windows-test-${{ matrix.arch }}
     needs: windows-build
@@ -174,6 +186,7 @@ jobs:
           - arch: arm64
             runner: windows-11-arm
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -181,11 +194,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: autom8-windows-${{ matrix.arch }}
-      - name: Unit tests
-        run: ./autom8-tests.exe
-      - name: Run a button in the terminal
+      - name: Test
         shell: pwsh
         run: |
+          ./autom8-tests.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           Expand-Archive autom8-windows-${{ matrix.arch }}.zip -DestinationPath .
           ./autom8-windows-${{ matrix.arch }}/autom8.exe --version
           ./autom8-windows-${{ matrix.arch }}/autom8.exe "$env:RUNNER_TEMP\hello.json" --run Hello
@@ -195,25 +208,31 @@ jobs:
 
   # Beta release, only from main and only when every build and test above passed.
   release:
-    needs: [version, linux, linux-sanitizers, windows-test]
-    if: needs.version.outputs.publish == 'true'
+    needs: [linux, windows-test]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
-    env:
-      VERSION: ${{ needs.version.outputs.label }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - id: version
+        run: |
+          .github/scripts/version.sh >> "$GITHUB_OUTPUT"
+          .github/scripts/version.sh | sed -n 's/^label=\(.*\)/Release: **\1**/p' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/download-artifact@v4
         with:
           pattern: autom8-*
           merge-multiple: true
       - name: Put the version in the file names
-        run: for f in autom8-*; do mv "$f" "${f/autom8-/autom8-$VERSION-}"; done
+        run: for f in autom8-*.tar.gz autom8-*.zip; do mv "$f" "${f/autom8-/autom8-${{ steps.version.outputs.label }}-}"; done
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.VERSION }}
+          tag_name: ${{ steps.version.outputs.label }}
           target_commitish: ${{ github.sha }}
-          name: AutoM8 ${{ env.VERSION }} (beta)
+          name: AutoM8 ${{ steps.version.outputs.label }} (beta)
           prerelease: true
           generate_release_notes: true
-          files: autom8-${{ env.VERSION }}-*
+          files: autom8-${{ steps.version.outputs.label }}-*

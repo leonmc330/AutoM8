@@ -77,6 +77,7 @@ Options (`-D...=ON`):
   release builds are made; on Linux it then needs the X11 / Wayland headers instead of
   `libsdl2-dev`). On by default on Windows.
 - `AUTOM8_SANITIZE`: AddressSanitizer + UBSan, for debugging.
+- `AUTOM8_GUI=OFF`: only the sequence engine and its tests, no SDL2 needed (for quick test builds).
 
 ### Windows
 

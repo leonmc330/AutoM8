@@ -9,6 +9,7 @@ else()
 	set(AUTOM8_VENDORED_DEFAULT OFF)
 endif()
 option(AUTOM8_VENDORED_DEPS "Download SDL2 and PCRE2 and link them statically" ${AUTOM8_VENDORED_DEFAULT})
+option(AUTOM8_GUI "Build the two programs (needs SDL2); OFF = only the engine and its tests" ON)
 option(AUTOM8_TESTS "Build the unit tests" ON)
 option(AUTOM8_SANITIZE "Build with AddressSanitizer + UBSan (GCC / Clang)" OFF)
 # Release number set by CI (1 -> "v001"); 0 = a local build, shown as "dev"
@@ -47,17 +48,21 @@ if(AUTOM8_VENDORED_DEPS)
 		set(exclude EXCLUDE_FROM_ALL) # keep their install rules out of ours
 	endif()
 
-	set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-	set(SDL_STATIC ON CACHE BOOL "" FORCE)
-	set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
-	set(SDL_TEST OFF CACHE BOOL "" FORCE)
-	set(SDL_AUDIO OFF CACHE BOOL "" FORCE)
-	set(SDL2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
-	set(SDL2_DISABLE_UNINSTALL ON CACHE BOOL "" FORCE)
-	FetchContent_Declare(SDL2
-		URL https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz
-		URL_HASH SHA256=5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165
-		${exclude})
+	if(AUTOM8_GUI)
+		set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+		set(SDL_STATIC ON CACHE BOOL "" FORCE)
+		set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
+		set(SDL_TEST OFF CACHE BOOL "" FORCE)
+		set(SDL_AUDIO OFF CACHE BOOL "" FORCE)
+		set(SDL2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
+		set(SDL2_DISABLE_UNINSTALL ON CACHE BOOL "" FORCE)
+		FetchContent_Declare(SDL2
+			URL https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz
+			URL_HASH SHA256=5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165
+			${exclude})
+		FetchContent_MakeAvailable(SDL2)
+		set(SDL2_TARGET SDL2::SDL2-static)
+	endif()
 
 	set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 	set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
@@ -69,25 +74,28 @@ if(AUTOM8_VENDORED_DEPS)
 		URL_HASH SHA256=47fe8c99461250d42f89e6e8fdaeba9da057855d06eb7fc08d9ca03fd08d7bc7
 		${exclude})
 
-	FetchContent_MakeAvailable(SDL2 pcre2)
-	set(SDL2_TARGET SDL2::SDL2-static)
+	FetchContent_MakeAvailable(pcre2)
 	set(PCRE2_TARGET pcre2-8-static)
 else()
-	find_package(SDL2 REQUIRED CONFIG)
+	if(AUTOM8_GUI)
+		find_package(SDL2 REQUIRED CONFIG)
+		set(SDL2_TARGET SDL2::SDL2)
+	endif()
 	find_package(PkgConfig REQUIRED)
 	pkg_check_modules(PCRE2 REQUIRED IMPORTED_TARGET libpcre2-8)
-	set(SDL2_TARGET SDL2::SDL2)
 	set(PCRE2_TARGET PkgConfig::PCRE2)
 endif()
 
 # Dear ImGui (vendored), drawn with SDL_Renderer
 set(IMGUI ${CMAKE_SOURCE_DIR}/third_party/imgui)
-add_library(imgui STATIC
-	${IMGUI}/imgui.cpp ${IMGUI}/imgui_draw.cpp ${IMGUI}/imgui_tables.cpp ${IMGUI}/imgui_widgets.cpp
-	${IMGUI}/misc/cpp/imgui_stdlib.cpp
-	${IMGUI}/backends/imgui_impl_sdl2.cpp ${IMGUI}/backends/imgui_impl_sdlrenderer2.cpp)
-target_include_directories(imgui PUBLIC ${IMGUI} ${IMGUI}/backends)
-target_link_libraries(imgui PUBLIC ${SDL2_TARGET})
+if(AUTOM8_GUI)
+	add_library(imgui STATIC
+		${IMGUI}/imgui.cpp ${IMGUI}/imgui_draw.cpp ${IMGUI}/imgui_tables.cpp ${IMGUI}/imgui_widgets.cpp
+		${IMGUI}/misc/cpp/imgui_stdlib.cpp
+		${IMGUI}/backends/imgui_impl_sdl2.cpp ${IMGUI}/backends/imgui_impl_sdlrenderer2.cpp)
+	target_include_directories(imgui PUBLIC ${IMGUI} ${IMGUI}/backends)
+	target_link_libraries(imgui PUBLIC ${SDL2_TARGET})
+endif()
 
 # ------------------------------------------------------------- our code ---
 
@@ -128,10 +136,6 @@ target_include_directories(autom8_moves PUBLIC src/editor)
 target_link_libraries(autom8_moves PUBLIC autom8_common)
 autom8_warnings(autom8_moves)
 
-# window + widgets shared by both programs
-add_library(autom8_gui STATIC src/common/gui.cpp)
-target_link_libraries(autom8_gui PUBLIC autom8_common imgui)
-autom8_warnings(autom8_gui)
 
 if(WIN32)
 	string(REPLACE "." "," AUTOM8_VERSION_RC "${PROJECT_VERSION}.${AUTOM8_BUILD_NUMBER}")
@@ -157,32 +161,39 @@ function(autom8_program target)
 	endif()
 endfunction()
 
-add_executable(autom8 src/runner/main.cpp src/runner/window.cpp)
-target_link_libraries(autom8 PRIVATE autom8_engine autom8_gui)
-autom8_program(autom8)
+if(AUTOM8_GUI)
+	# window + widgets shared by both programs
+	add_library(autom8_gui STATIC src/common/gui.cpp)
+	target_link_libraries(autom8_gui PUBLIC autom8_common imgui)
+	autom8_warnings(autom8_gui)
 
-add_executable(autom8-editor WIN32 src/editor/main.cpp src/editor/editor.cpp) # WIN32: no console window
-target_link_libraries(autom8-editor PRIVATE autom8_moves autom8_gui)
-autom8_program(autom8-editor)
+	add_executable(autom8 src/runner/main.cpp src/runner/window.cpp)
+	target_link_libraries(autom8 PRIVATE autom8_engine autom8_gui)
+	autom8_program(autom8)
 
-# THIRD_PARTY_LICENSES.txt next to the programs: the notices binary copies must carry
-set(license_files
-	"Dear ImGui|${IMGUI}/LICENSE.txt"
-	"nlohmann/json|${CMAKE_SOURCE_DIR}/third_party/nlohmann/LICENSE.MIT")
-if(AUTOM8_VENDORED_DEPS)
-	list(APPEND license_files "SDL2|${sdl2_SOURCE_DIR}/LICENSE.txt" "PCRE2|${pcre2_SOURCE_DIR}/LICENCE.md")
+	add_executable(autom8-editor WIN32 src/editor/main.cpp src/editor/editor.cpp) # WIN32: no console window
+	target_link_libraries(autom8-editor PRIVATE autom8_moves autom8_gui)
+	autom8_program(autom8-editor)
+
+	# THIRD_PARTY_LICENSES.txt next to the programs: the notices binary copies must carry
+	set(license_files
+		"Dear ImGui|${IMGUI}/LICENSE.txt"
+		"nlohmann/json|${CMAKE_SOURCE_DIR}/third_party/nlohmann/LICENSE.MIT")
+	if(AUTOM8_VENDORED_DEPS)
+		list(APPEND license_files "SDL2|${sdl2_SOURCE_DIR}/LICENSE.txt" "PCRE2|${pcre2_SOURCE_DIR}/LICENCE.md")
+	endif()
+	set(licenses "AutoM8 includes the following third-party software.\n")
+	foreach(entry ${license_files})
+		string(REPLACE "|" ";" entry "${entry}")
+		list(GET entry 0 lib_name)
+		list(GET entry 1 lib_file)
+		file(READ "${lib_file}" text)
+		string(APPEND licenses "\n==================================== ${lib_name} ====================================\n\n${text}")
+	endforeach()
+	file(WRITE ${CMAKE_BINARY_DIR}/THIRD_PARTY_LICENSES.txt "${licenses}")
+
+	install(TARGETS autom8 autom8-editor RUNTIME DESTINATION bin)
 endif()
-set(licenses "AutoM8 includes the following third-party software.\n")
-foreach(entry ${license_files})
-	string(REPLACE "|" ";" entry "${entry}")
-	list(GET entry 0 lib_name)
-	list(GET entry 1 lib_file)
-	file(READ "${lib_file}" text)
-	string(APPEND licenses "\n==================================== ${lib_name} ====================================\n\n${text}")
-endforeach()
-file(WRITE ${CMAKE_BINARY_DIR}/THIRD_PARTY_LICENSES.txt "${licenses}")
-
-install(TARGETS autom8 autom8-editor RUNTIME DESTINATION bin)
 
 if(AUTOM8_TESTS)
 	enable_testing()
