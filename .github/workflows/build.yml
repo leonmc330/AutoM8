@@ -1,22 +1,71 @@
 name: build
 
-# Every push / PR: builds Linux x86_64 + arm64 and Windows x86_64 + arm64, runs the unit
-# tests on each (natively), and keeps the packages as workflow artifacts.
-# Pushing a tag like v1.2.3 also publishes them as a GitHub release.
+# Runs only when code changes (not README / LICENSE / examples): builds Linux x86_64 + arm64
+# and Windows x86_64 + arm64 and runs the tests on each, natively.
+# On main, when everything passes, it publishes a beta release numbered v001, v002, ... v999.
 
 on:
   push:
     branches: ["**"]
-    tags: ["v*"]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "third_party/**"
+      - "res/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/build.yml"
   pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "third_party/**"
+      - "res/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/build.yml"
+  workflow_dispatch: # "Run workflow" button in the Actions tab
+
+# One run at a time per branch, so two quick pushes to main can't take the same number.
+# Other branches / PRs: a new push cancels the run that is still going.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   LLVM_MINGW: llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64
   LLVM_MINGW_SHA256: bb7bb7654b33d5aa8712acb837c963b2e0c56352560c76105270a3268c665c21
 
 jobs:
+  # Picks the release number: the highest existing vNNN tag + 1 (main only; elsewhere "dev").
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      number: ${{ steps.pick.outputs.number }}
+      label: ${{ steps.pick.outputs.label }}
+      publish: ${{ steps.pick.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # all tags
+      - id: pick
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+            last=$(git tag -l 'v[0-9][0-9][0-9]' | sed 's/^v//' | sort -n | tail -1)
+            number=$((10#${last:-0} + 1))
+            if [ "$number" -gt 999 ]; then
+              echo "::error::v999 reached: time for a new version scheme"
+              exit 1
+            fi
+            printf 'number=%d\nlabel=v%03d\npublish=true\n' "$number" "$number" >> "$GITHUB_OUTPUT"
+            printf 'Release: **v%03d** (published if every job passes)\n' "$number" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf 'number=0\nlabel=dev\npublish=false\n' >> "$GITHUB_OUTPUT"
+          fi
+
   linux:
     name: linux-${{ matrix.arch }}
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -38,11 +87,13 @@ jobs:
             libdrm-dev libgbm-dev libdecor-0-dev
       - name: Build (SDL2 + PCRE2 static)
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DAUTOM8_VENDORED_DEPS=ON
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DAUTOM8_VENDORED_DEPS=ON \
+            -DAUTOM8_BUILD_NUMBER=${{ needs.version.outputs.number }}
           cmake --build build
       - name: Test
         run: |
           ctest --test-dir build --output-on-failure
+          ./build/autom8 --version
           ./build/autom8 "$RUNNER_TEMP/hello.json" --run Hello
       - name: Package
         run: |
@@ -71,6 +122,7 @@ jobs:
 
   windows-build:
     name: windows-build-${{ matrix.arch }}
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -90,7 +142,8 @@ jobs:
           mingw_arch=${{ matrix.arch }}
           [ "$mingw_arch" = arm64 ] && mingw_arch=aarch64
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/llvm-mingw.cmake -DMINGW_ARCH=$mingw_arch
+            -DCMAKE_TOOLCHAIN_FILE=cmake/llvm-mingw.cmake -DMINGW_ARCH=$mingw_arch \
+            -DAUTOM8_BUILD_NUMBER=${{ needs.version.outputs.number }}
           cmake --build build
       - name: Package
         run: |
@@ -134,27 +187,33 @@ jobs:
         shell: pwsh
         run: |
           Expand-Archive autom8-windows-${{ matrix.arch }}.zip -DestinationPath .
+          ./autom8-windows-${{ matrix.arch }}/autom8.exe --version
           ./autom8-windows-${{ matrix.arch }}/autom8.exe "$env:RUNNER_TEMP\hello.json" --run Hello
           if ($LASTEXITCODE -ne 0) { exit 1 }
           ./autom8-windows-${{ matrix.arch }}/autom8.exe "$env:RUNNER_TEMP\hello.json" --run Countdown
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
+  # Beta release, only from main and only when every build and test above passed.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, linux-sanitizers, windows-test]
+    needs: [version, linux, linux-sanitizers, windows-test]
+    if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.label }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: autom8-*
           merge-multiple: true
+      - name: Put the version in the file names
+        run: for f in autom8-*; do mv "$f" "${f/autom8-/autom8-$VERSION-}"; done
       - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            autom8-linux-x86_64.tar.gz
-            autom8-linux-arm64.tar.gz
-            autom8-windows-x86_64.zip
-            autom8-windows-arm64.zip
+          tag_name: ${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: AutoM8 ${{ env.VERSION }} (beta)
+          prerelease: true
           generate_release_notes: true
+          files: autom8-${{ env.VERSION }}-*

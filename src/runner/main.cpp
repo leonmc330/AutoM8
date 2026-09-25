@@ -20,7 +20,7 @@
 #endif
 
 static const char kUsage[] =
-	"usage: autom8 [FILE.json] [--run NAME [--verbose] [--stay]]\n"
+	"usage: autom8 [FILE.json] [--run NAME [--verbose] [--stay]] | --version\n"
 	"\n"
 	"  autom8                    window for the default sequence file\n"
 	"  autom8 FILE.json          window for another file\n"
@@ -148,6 +148,10 @@ int main(int argc, char **argv)
 			fputs(kUsage, stdout);
 			return 0;
 		}
+		if (a == "--version") {
+			puts("autom8 " AUTOM8_VERSION);
+			return 0;
+		}
 		if (a == "--run") {
 			if (i + 1 >= args.size()) {
 				fputs("autom8: --run needs a button name\n", stderr);
@@ -177,7 +181,7 @@ int main(int argc, char **argv)
 	};
 	cb.draw = [&] { draw_runner_window(r); };
 	cb.busy = [&] { return r.active; };
-	if (!run_gui("AutoM8", 760, 420, cb)) return 1;
+	if (!run_gui("AutoM8 " AUTOM8_VERSION, 760, 420, cb)) return 1;
 
 	// Window closed: run the "on close" button (max 20 s) so graceful kills get their time.
 	if (!r.doc.on_close.empty() && r.doc.find(r.doc.on_close)) {

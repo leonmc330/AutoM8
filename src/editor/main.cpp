@@ -12,7 +12,7 @@ int main(int argc, char **argv)
 	Editor ed(document_path(utf8_args(argc, argv)));
 	GuiCallbacks cb;
 	cb.draw = [&] { ed.draw(); };
-	return run_gui("AutoM8 Editor", 1150, 740, cb) ? 0 : 1;
+	return run_gui("AutoM8 Editor " AUTOM8_VERSION, 1150, 740, cb) ? 0 : 1;
 }
 
 #ifdef _WIN32

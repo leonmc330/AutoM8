@@ -13,8 +13,8 @@ BEGIN
     BEGIN
       VALUE "ProductName", "AutoM8"
       VALUE "FileDescription", "AutoM8 - dumb little automations"
-      VALUE "ProductVersion", "@PROJECT_VERSION@"
-      VALUE "FileVersion", "@PROJECT_VERSION@"
+      VALUE "ProductVersion", "@AUTOM8_VERSION_LABEL@"
+      VALUE "FileVersion", "@AUTOM8_VERSION_LABEL@"
       VALUE "LegalCopyright", "Copyright (c) 2026 Leon (leonminnecurt330)"
     END
   END

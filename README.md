@@ -40,12 +40,14 @@ Commands and paths expand `~`, `$VAR` and `${VAR}`.
 
 ## Download
 
-Ready-made builds are on the [Releases](../../releases) page:
+Ready-made builds are on the [Releases](../../releases) page. Every code change that
+passes the tests on all four platforms is published there as a beta: **v001**, **v002**, ...
+(`autom8 --version` and the window titles show which one you have).
 
 | | x86_64 (Intel / AMD) | arm64 |
 |---|---|---|
-| **Linux** | `autom8-linux-x86_64.tar.gz` | `autom8-linux-arm64.tar.gz` (Raspberry Pi 4/5, ARM laptops...) |
-| **Windows 10 / 11** | `autom8-windows-x86_64.zip` | `autom8-windows-arm64.zip` (Snapdragon laptops...) |
+| **Linux** | `autom8-vNNN-linux-x86_64.tar.gz` | `autom8-vNNN-linux-arm64.tar.gz` (Raspberry Pi 4/5, ARM laptops...) |
+| **Windows 10 / 11** | `autom8-vNNN-windows-x86_64.zip` | `autom8-vNNN-windows-arm64.zip` (Snapdragon laptops...) |
 
 Nothing to install: unpack and run. The Linux builds need glibc 2.35+ (Ubuntu 22.04,
 Debian 12, Fedora 36 or newer) and an X11 or Wayland desktop.
@@ -105,6 +107,7 @@ next to them. Visual Studio (MSVC) is supported by the CMake files, but CI doesn
 ./autom8 --run Start          # run the "Start" button in the terminal, no window
 ./autom8 --run Start --verbose --stay   # also print every program's output, keep going until Ctrl+C
 ./autom8 my-other-file.json   # both programs take another sequence file
+./autom8 --version            # which release this is (local builds say "dev")
 ```
 
 The default file is `sequences.json` **next to the programs** if one is there (handy
