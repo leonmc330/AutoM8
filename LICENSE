@@ -1,0 +1,51 @@
+AutoM8 License
+
+Copyright (c) 2026 Leon (leonminnecurt330)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+1. Notice. The above copyright notice and this permission notice shall be
+   included in all copies or substantial portions of the Software.
+
+2. Credit in paid products. If the Software, or any work based on it or
+   containing any substantial portion of it, is included in, distributed
+   with, or used to provide a product or service that is sold, offered for a
+   fee or subscription, or otherwise commercially licensed (a "Paid
+   Product"), then the Paid Product must visibly display the following
+   credit:
+
+       Built with AutoM8 by Leon (leonminnecurt330)
+
+   The credit must be:
+     (a) in bold type;
+     (b) displayed in a size at least as large as the largest text used for
+         the Paid Product's own name in the same place, and never smaller
+         than the surrounding body text;
+     (c) shown where users will readily see it - at a minimum in the Paid
+         Product's documentation or README and on its "About" screen,
+         credits screen, or web / store page, whichever the Paid Product
+         has.
+
+   The credit may not be hidden, abbreviated, or placed only in source code,
+   license files, or other places ordinary users do not look.
+
+   Free (non-paid) use, modification, and redistribution only require
+   condition 1.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---------------------------------------------------------------------------
+Third-party code in third_party/ keeps its own license (both MIT):
+  - Dear ImGui      third_party/imgui/LICENSE.txt
+  - nlohmann/json   third_party/nlohmann/LICENSE.MIT

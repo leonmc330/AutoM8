@@ -1,0 +1,18 @@
+# build output
+/build*/
+/autom8
+/autom8-editor
+*.o
+*.d
+*.exe
+
+# your own sequence files (the examples/ folder is tracked)
+/sequences.json
+*.json.tmp
+*.json.bak
+
+# editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

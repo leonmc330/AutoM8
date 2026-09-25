@@ -1,0 +1,181 @@
+{
+  "buttons": [
+    {
+      "color": [
+        0.20000000298023224,
+        0.550000011920929,
+        0.25,
+        1.0
+      ],
+      "name": "Start",
+      "sequence": [
+        {
+          "blocking": true,
+          "command": "~/scripts/lighthouse-controllers.sh check",
+          "cwd": "",
+          "env": "",
+          "match": "",
+          "max_seconds": 25.0,
+          "min_seconds": 0.0,
+          "name": "Controller check",
+          "shell": false,
+          "skip_if_running": true,
+          "type": "run"
+        },
+        {
+          "condition": {
+            "not": true,
+            "number": 0,
+            "program": "Controller check",
+            "text": "(LHR-[0-9A-F]+: Connected to receiver [0-9A-F]{10}[\\s\\S]*){2}",
+            "type": "output_matches"
+          },
+          "else": [],
+          "then": [
+            {
+              "condition": {
+                "not": true,
+                "number": 0,
+                "program": "",
+                "text": "Fewer than 2 controllers are on. Start anyway?",
+                "type": "user_says_yes"
+              },
+              "else": [],
+              "then": [
+                {
+                  "type": "stop"
+                }
+              ],
+              "type": "if"
+            }
+          ],
+          "type": "if"
+        },
+        {
+          "blocking": false,
+          "command": "~/Applications/Envision-x86_64.AppImage -p YOUR-ENVISION-PROFILE-ID -S",
+          "cwd": "",
+          "env": "",
+          "match": "monado-service, Envision-x86_64.AppImage, /.mount_Envisi",
+          "max_seconds": -1.0,
+          "min_seconds": 0.0,
+          "name": "Monado",
+          "shell": false,
+          "skip_if_running": true,
+          "type": "run"
+        },
+        {
+          "condition": {
+            "not": false,
+            "number": 0,
+            "program": "",
+            "text": "${XDG_RUNTIME_DIR}/monado_comp_ipc",
+            "type": "file_exists"
+          },
+          "stop_on_timeout": true,
+          "timeout": 90.0,
+          "type": "wait_until"
+        },
+        {
+          "blocking": false,
+          "command": "~/Applications/vrcx-monado-overlay/vrcx-monado-overlay",
+          "cwd": "",
+          "env": "",
+          "match": "vrcx-monado-overlay",
+          "max_seconds": -1.0,
+          "min_seconds": 0.0,
+          "name": "VRCX overlay bridge",
+          "shell": false,
+          "skip_if_running": true,
+          "type": "run"
+        },
+        {
+          "blocking": false,
+          "command": "~/Applications/VRCX.AppImage",
+          "cwd": "",
+          "env": "VR_OVERRIDE=~/Applications/vrcx-openvr-stub",
+          "match": "VRCX.AppImage, /.mount_VRCX",
+          "max_seconds": -1.0,
+          "min_seconds": 0.0,
+          "name": "VRCX",
+          "shell": false,
+          "skip_if_running": true,
+          "type": "run"
+        },
+        {
+          "blocking": false,
+          "command": "~/Applications/WayVR-v26.8.0-x86_64.AppImage --openxr --show --wait",
+          "cwd": "",
+          "env": "",
+          "match": "WayVR-, /.mount_WayVR",
+          "max_seconds": -1.0,
+          "min_seconds": 0.0,
+          "name": "WayVR",
+          "shell": false,
+          "skip_if_running": true,
+          "type": "run"
+        }
+      ]
+    },
+    {
+      "color": [
+        0.6000000238418579,
+        0.20000000298023224,
+        0.2199999988079071,
+        1.0
+      ],
+      "name": "Stop",
+      "sequence": [
+        {
+          "graceful_seconds": 5.0,
+          "name": "Monado",
+          "type": "kill"
+        },
+        {
+          "graceful_seconds": 0.0,
+          "type": "kill_all"
+        },
+        {
+          "blocking": true,
+          "command": "for p in /proc/[0-9]*; do grep -qs /xrizer/ \"$p/maps\" && kill -9 \"${p#/proc/}\"; done; true",
+          "cwd": "",
+          "env": "",
+          "match": "",
+          "max_seconds": 10.0,
+          "min_seconds": 0.0,
+          "name": "Kill xrizer users",
+          "shell": true,
+          "skip_if_running": true,
+          "type": "run"
+        },
+        {
+          "blocking": true,
+          "command": "rm -f \"$XDG_RUNTIME_DIR/monado_comp_ipc\"",
+          "cwd": "",
+          "env": "",
+          "match": "",
+          "max_seconds": 5.0,
+          "min_seconds": 0.0,
+          "name": "Remove Monado socket",
+          "shell": true,
+          "skip_if_running": true,
+          "type": "run"
+        },
+        {
+          "blocking": true,
+          "command": "~/scripts/lighthouse-controllers.sh off",
+          "cwd": "",
+          "env": "",
+          "match": "",
+          "max_seconds": 25.0,
+          "min_seconds": 0.0,
+          "name": "Controller power off",
+          "shell": false,
+          "skip_if_running": true,
+          "type": "run"
+        }
+      ]
+    }
+  ],
+  "on_close": "Stop"
+}

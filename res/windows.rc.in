@@ -1,0 +1,25 @@
+// Windows resources for both programs (configured by CMake into the build folder): the manifest (UTF-8, long paths) and version info.
+#include <winver.h>
+
+1 24 "@AUTOM8_MANIFEST@" // 1 = CREATEPROCESS_MANIFEST_RESOURCE_ID, 24 = RT_MANIFEST
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     @AUTOM8_VERSION_RC@
+PRODUCTVERSION  @AUTOM8_VERSION_RC@
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "ProductName", "AutoM8"
+      VALUE "FileDescription", "AutoM8 - dumb little automations"
+      VALUE "ProductVersion", "@PROJECT_VERSION@"
+      VALUE "FileVersion", "@PROJECT_VERSION@"
+      VALUE "LegalCopyright", "Copyright (c) 2026 Leon (leonminnecurt330)"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END
