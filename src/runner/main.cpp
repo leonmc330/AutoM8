@@ -181,16 +181,5 @@ int main(int argc, char **argv)
 	};
 	cb.draw = [&] { draw_runner_window(r); };
 	cb.busy = [&] { return r.active; };
-	if (!run_gui("AutoM8 " AUTOM8_VERSION, 760, 420, cb)) return 1;
-
-	// Window closed: run the "on close" button (max 20 s) so graceful kills get their time.
-	if (!r.doc.on_close.empty() && r.doc.find(r.doc.on_close)) {
-		r.press(r.doc.on_close);
-		auto end = Clock::now() + std::chrono::seconds(20);
-		while (r.active && Clock::now() < end) {
-			r.update();
-			std::this_thread::sleep_for(std::chrono::milliseconds(50));
-		}
-	}
-	return 0;
+	return run_gui("AutoM8 " AUTOM8_VERSION, 760, 420, cb) ? 0 : 1;
 }

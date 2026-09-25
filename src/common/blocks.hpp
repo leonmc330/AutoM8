@@ -65,7 +65,6 @@ struct Button {
 
 struct Document {
 	std::vector<Button> buttons;
-	std::string on_close; // name of the button run when the runner window closes ("" = none)
 
 	Button *find(const std::string &name);
 };

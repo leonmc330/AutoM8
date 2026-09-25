@@ -271,8 +271,7 @@ static void button_panel(Editor &ed, bool &dirty)
 		ImGui::PushID(i);
 		ImGui::ColorButton("##c", to_imvec(b.color), ImGuiColorEditFlags_NoTooltip, ImVec2(14, 14));
 		ImGui::SameLine();
-		std::string label = b.name + (doc.on_close == b.name ? "  (on close)" : "");
-		if (ImGui::Selectable(label.c_str(), ed.selected == i)) ed.selected = i;
+		if (ImGui::Selectable(b.name.c_str(), ed.selected == i)) ed.selected = i;
 		ImGui::PopID();
 	}
 	if (ImGui::Button("+ add button")) {
@@ -287,23 +286,14 @@ static void button_panel(Editor &ed, bool &dirty)
 	Button &b = doc.buttons[ed.selected];
 	ImGui::Spacing();
 	ImGui::SeparatorText("Selected button");
-	std::string old_name = b.name;
 	ImGui::TextUnformatted("Name");
-	if (text_field("##bn", b.name, -1)) {
-		if (doc.on_close == old_name) doc.on_close = b.name; // keep the on-close link
-		dirty = true;
-	}
+	dirty |= text_field("##bn", b.name, -1);
 	if (std::count_if(doc.buttons.begin(), doc.buttons.end(), [&](const Button &o) { return o.name == b.name; }) > 1)
 		ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "Another button has this name");
 	ImGui::TextUnformatted("Color");
 	float col[3] = {b.color.r, b.color.g, b.color.b};
 	if (ImGui::ColorEdit3("##col", col, ImGuiColorEditFlags_NoInputs)) {
 		b.color = {col[0], col[1], col[2], 1};
-		dirty = true;
-	}
-	bool on_close = doc.on_close == b.name;
-	if (ImGui::Checkbox("run when the runner closes", &on_close)) {
-		doc.on_close = on_close ? b.name : "";
 		dirty = true;
 	}
 	int i = ed.selected;
@@ -331,7 +321,6 @@ static void button_panel(Editor &ed, bool &dirty)
 	if (ImGui::BeginPopupModal("delete?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
 		ImGui::Text("Delete the button '%s' and its blocks?", doc.buttons[i].name.c_str());
 		if (ImGui::Button("Delete")) {
-			if (doc.on_close == doc.buttons[i].name) doc.on_close.clear();
 			doc.buttons.erase(doc.buttons.begin() + i);
 			ed.selected = std::min(ed.selected, (int)doc.buttons.size() - 1);
 			dirty = true;

@@ -164,11 +164,9 @@ bool load_document(const std::string &path, Document &doc, std::string *error)
 				b.seq = seq_from_json(jb["sequence"]);
 				d.buttons.push_back(b);
 			}
-			d.on_close = j.value("on_close", "");
-		} else { // old format: {"start": [...], "stop": [...], "kill_on_close": bool}
+		} else { // old format: {"start": [...], "stop": [...]}
 			d.buttons.push_back({"Start", {0.20f, 0.55f, 0.25f, 1}, seq_from_json(j["start"])});
 			d.buttons.push_back({"Stop", {0.60f, 0.20f, 0.22f, 1}, seq_from_json(j["stop"])});
-			d.on_close = j.value("kill_on_close", true) ? "Stop" : "";
 		}
 		doc = d;
 		return true;
@@ -185,7 +183,7 @@ bool save_document(const std::string &path, const Document &doc)
 		buttons.push_back({{"name", b.name},
 		                   {"color", {b.color.r, b.color.g, b.color.b, b.color.a}},
 		                   {"sequence", seq_to_json(b.seq)}});
-	json j = {{"buttons", buttons}, {"on_close", doc.on_close}};
+	json j = {{"buttons", buttons}};
 	std::error_code ec;
 	fs::path target = path_of(path);
 	fs::create_directories(target.parent_path(), ec);

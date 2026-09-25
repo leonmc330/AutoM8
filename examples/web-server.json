@@ -83,6 +83,5 @@
         {"type": "message", "text": "Server stopped.", "popup": false}
       ]
     }
-  ],
-  "on_close": "Stop"
+  ]
 }

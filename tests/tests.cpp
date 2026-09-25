@@ -69,7 +69,6 @@ static void test_util()
 static void test_json_round_trip()
 {
 	Document d = default_document();
-	d.on_close = "Countdown";
 	Block run;
 	run.type = BT::Run;
 	run.name = "prog";
@@ -84,10 +83,20 @@ static void test_json_round_trip()
 	std::string err;
 	CHECK(load_document(path, back, &err));
 	CHECK(back.buttons.size() == d.buttons.size());
-	CHECK(back.on_close == "Countdown");
 	CHECK(back.buttons[0].seq.back().env == "A=1\nB=2");
 	CHECK(back.buttons[0].seq.back().shell);
 	CHECK(back.buttons[1].seq[0].type == BT::RepeatN && back.buttons[1].seq[0].body.size() == 2);
+
+	// Files from older versions still load: "on_close" is ignored, and is not written back.
+	std::ofstream(path_of(path)) << "{ \"buttons\": [ {\"name\": \"A\", \"sequence\": []} ], \"on_close\": \"A\" }";
+	CHECK(load_document(path, back, &err));
+	CHECK(back.buttons.size() == 1 && back.buttons[0].name == "A");
+	CHECK(save_document(path, back));
+	{
+		std::ifstream in(path_of(path));
+		std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+		CHECK(saved.find("on_close") == std::string::npos);
+	}
 
 	// A broken file is reported, not loaded.
 	std::ofstream(path_of(path)) << "{ \"buttons\": [ {\"name\": 3} ]";

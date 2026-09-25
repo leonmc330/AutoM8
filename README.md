@@ -116,14 +116,10 @@ for a portable folder), else `~/.config/autom8/sequences.json` on Linux and
 `%APPDATA%\autom8\sequences.json` on Windows. It is created with a
 small example on first run. The runner reloads it by itself when you save in the editor.
 
-If a button is marked *run when the runner closes*, closing the `autom8` window runs
-it (up to 20 s), e.g. to stop everything the *Start* button launched.
-
 See [`examples/web-server.json`](examples/web-server.json) for a small complete setup
 (Linux, needs `python3` and `curl`): **Start** makes a demo page, starts a local web
 server, waits until it answers, and asks whether to open it in the browser; **Status**
-tells you if it is running; **Stop** asks it to quit and kills it after 3 s. Closing
-the runner window runs **Stop**.
+tells you if it is running; **Stop** asks it to quit and kills it after 3 s.
 
 ```sh
 ./autom8 examples/web-server.json
@@ -149,7 +145,7 @@ A sequence that runs Linux commands won't work on Windows as-is, and the other w
   `Kill matching` with the pattern `VRCX` also kills `vim VRCX-notes.txt`. Use long,
   specific patterns, like a full path or `/.mount_VRCX`.
 - Programs are started in their own session / job, so they keep running when AutoM8
-  exits, unless a Kill block (or the on-close button) stops them.
+  exits, unless a Kill block stops them.
 - When a program started by a Run block exits, whatever it left running in the
   background (in its process group / job) is stopped too. To start something that
   should outlive it, give it its own Run block.
