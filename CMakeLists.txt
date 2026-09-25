@@ -171,8 +171,12 @@ if(AUTOM8_GUI)
 	target_link_libraries(autom8 PRIVATE autom8_engine autom8_gui)
 	autom8_program(autom8)
 
-	add_executable(autom8-editor WIN32 src/editor/main.cpp src/editor/editor.cpp) # WIN32: no console window
-	target_link_libraries(autom8-editor PRIVATE autom8_moves autom8_gui)
+	find_package(Threads REQUIRED) # the file dialog runs on a thread
+	add_executable(autom8-editor WIN32 src/editor/main.cpp src/editor/editor.cpp src/editor/file_dialog.cpp) # WIN32: no console window
+	target_link_libraries(autom8-editor PRIVATE autom8_moves autom8_gui Threads::Threads)
+	if(WIN32)
+		target_link_libraries(autom8-editor PRIVATE comdlg32 ole32)
+	endif()
 	autom8_program(autom8-editor)
 
 	# THIRD_PARTY_LICENSES.txt next to the programs: the notices binary copies must carry

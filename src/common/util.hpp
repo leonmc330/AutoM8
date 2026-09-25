@@ -21,6 +21,9 @@ std::vector<std::string> utf8_args(int argc, char **argv);
 // else sequences.json next to the program if there is one, else sequences.json in config_dir().
 std::string document_path(const std::string &given);
 
+// "dir/name" -> "dir/name.json"; a path that has an extension is kept as is.
+std::string with_json_extension(const std::string &path);
+
 // UTF-8 string <-> filesystem path (plain on Linux; UTF-16 underneath on Windows).
 std::filesystem::path path_of(const std::string &utf8);
 std::string path_string(const std::filesystem::path &p);

@@ -11,6 +11,9 @@ struct GuiCallbacks {
 	std::function<void()> update;  // called every loop, before drawing
 	std::function<void()> draw;    // ImGui drawing
 	std::function<bool()> busy;    // true = wake up often (something is running)
+	std::function<std::string()> title; // window title, updated when it changes (default: the one given)
+	std::function<bool()> close_requested; // the user closes the window: true = close now, false = not yet
+	std::function<bool()> should_quit;     // true = close the window now (polled every loop)
 };
 
 // Opens the window and runs until it is closed. Returns false if it could not open.

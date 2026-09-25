@@ -176,7 +176,7 @@ bool load_document(const std::string &path, Document &doc, std::string *error)
 	}
 }
 
-bool save_document(const std::string &path, const Document &doc)
+std::string document_json(const Document &doc)
 {
 	json buttons = json::array();
 	for (auto &b : doc.buttons)
@@ -184,13 +184,18 @@ bool save_document(const std::string &path, const Document &doc)
 		                   {"color", {b.color.r, b.color.g, b.color.b, b.color.a}},
 		                   {"sequence", seq_to_json(b.seq)}});
 	json j = {{"buttons", buttons}};
+	return j.dump(2) + "\n";
+}
+
+bool save_document(const std::string &path, const Document &doc)
+{
 	std::error_code ec;
 	fs::path target = path_of(path);
 	fs::create_directories(target.parent_path(), ec);
 	fs::path tmp = path_of(path + ".tmp"); // write then rename, so the runner never reads half a file
 	{
 		std::ofstream f(tmp);
-		f << j.dump(2) << "\n";
+		f << document_json(doc);
 		f.close();
 		if (!f) { // disk full, no permission...: keep the old file
 			fs::remove(tmp, ec);

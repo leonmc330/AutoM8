@@ -64,6 +64,10 @@ static void test_util()
 	CHECK(expand("$AUTOM8_TEST/${AUTOM8_TEST}-$") == "xyz/xyz-$");
 	CHECK(expand("~/f") == home() + "/f");
 	CHECK(expand("a~b") == "a~b");
+	CHECK(with_json_extension("dir/setup") == "dir/setup.json");
+	CHECK(with_json_extension("dir/setup.json") == "dir/setup.json");
+	CHECK(with_json_extension("dir/setup.txt") == "dir/setup.txt");
+	CHECK(with_json_extension("") == "");
 }
 
 static void test_json_round_trip()
@@ -86,6 +90,15 @@ static void test_json_round_trip()
 	CHECK(back.buttons[0].seq.back().env == "A=1\nB=2");
 	CHECK(back.buttons[0].seq.back().shell);
 	CHECK(back.buttons[1].seq[0].type == BT::RepeatN && back.buttons[1].seq[0].body.size() == 2);
+	// The editor tells unsaved changes by comparing document_json(): same document, same text.
+	CHECK(document_json(back) == document_json(d));
+	back.buttons[0].name += "!";
+	CHECK(document_json(back) != document_json(d));
+	{
+		std::ifstream in(path_of(path));
+		std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+		CHECK(saved == document_json(d));
+	}
 
 	// Files from older versions still load: "on_close" is ignored, and is not written back.
 	std::ofstream(path_of(path)) << "{ \"buttons\": [ {\"name\": \"A\", \"sequence\": []} ], \"on_close\": \"A\" }";

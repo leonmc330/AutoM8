@@ -136,6 +136,12 @@ std::string document_path(const std::string &given)
 	return path_string(path_of(config_dir()) / "sequences.json");
 }
 
+std::string with_json_extension(const std::string &path)
+{
+	if (path.empty() || path_of(path).has_extension()) return path;
+	return path + ".json";
+}
+
 std::string trim(std::string s)
 {
 	while (!s.empty() && isspace((unsigned char)s.back())) s.pop_back();

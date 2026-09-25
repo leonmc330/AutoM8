@@ -43,18 +43,26 @@ bool run_gui(const char *title, int width, int height, const GuiCallbacks &cb)
 	ImGui_ImplSDL2_InitForSDLRenderer(win, ren);
 	ImGui_ImplSDLRenderer2_Init(ren);
 
+	std::string shown_title = title;
 	bool quit = false;
 	while (!quit) {
 		SDL_Event ev;
 		int timeout = cb.busy && cb.busy() ? 30 : 100; // wake up to read output / advance sequences
 		if (SDL_WaitEventTimeout(&ev, timeout)) {
+			bool close = false;
 			do {
 				ImGui_ImplSDL2_ProcessEvent(&ev);
-				if (ev.type == SDL_QUIT) quit = true;
-				if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_CLOSE) quit = true;
+				if (ev.type == SDL_QUIT) close = true;
+				if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_CLOSE) close = true;
 			} while (SDL_PollEvent(&ev));
+			if (close) quit = !cb.close_requested || cb.close_requested();
 		}
 		if (cb.update) cb.update();
+		if (cb.should_quit && cb.should_quit()) quit = true;
+		if (cb.title) {
+			std::string t = cb.title();
+			if (t != shown_title) SDL_SetWindowTitle(win, (shown_title = t).c_str());
+		}
 
 		ImGui_ImplSDLRenderer2_NewFrame();
 		ImGui_ImplSDL2_NewFrame();

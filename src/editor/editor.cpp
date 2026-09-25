@@ -1,6 +1,6 @@
 // Editor window: button list on the left, the selected button's blocks on the
 // right (inline fields, add / delete / move by buttons or drag & drop).
-// Every change is saved to the file right away.
+// A File menu saves / opens / reloads, and asks before dropping unsaved changes.
 #include "editor.hpp"
 #include "gui.hpp"
 #include "moves.hpp"
@@ -334,82 +334,261 @@ static void button_panel(Editor &ed, bool &dirty)
 
 // ------------------------------------------------------------- window ---
 
-Editor::Editor(const std::string &p) : path(p), path_input(p)
+Editor::Editor(const std::string &p) : path(p)
 {
 	std::string err;
-	if (!load_document(path, doc, &err)) {
+	if (load_document(path, doc, &err)) {
+		status = "Opened " + path;
+	} else {
 		std::error_code ec;
-		if (fs::exists(path_of(path), ec)) {
-			// Every change is saved right away: keep the unreadable file first.
-			std::string bak = path + ".bak";
-			fs::copy_file(path_of(path), path_of(bak), fs::copy_options::overwrite_existing, ec);
-			status = "Cannot read the file (" + err + "), starting from the default buttons. " +
-			         (ec ? "Saving will overwrite it." : "The old file was copied to " + bak);
-		} else {
-			status = "New file: " + path;
-		}
+		status = fs::exists(path_of(path), ec) ? "Cannot read the file (" + err + "): saving will replace it"
+		                                       : "New file, Ctrl+S creates it";
 		doc = default_document();
 	}
+	saved_json = document_json(doc);
 }
 
-void Editor::save()
+std::string Editor::title() const
 {
-	if (save_document(path, doc)) status = "Saved " + path;
-	else status = "Cannot save " + path;
+	std::string name = path.empty() ? "Untitled" : path_string(path_of(path).filename());
+	return name + (modified ? "*" : "") + " - AutoM8 Editor " AUTOM8_VERSION;
 }
 
-static void file_bar(Editor &ed, bool &dirty)
+bool Editor::load(const std::string &file)
 {
-	text_field("##file", ed.path_input, 460);
-	ImGui::SameLine();
-	if (ImGui::Button("Save as")) {
-		ed.path = expand(ed.path_input);
-		ed.save();
+	Document d;
+	std::string err;
+	if (!load_document(file, d, &err)) {
+		status = err;
+		return false;
 	}
-	ImGui::SameLine();
-	if (ImGui::Button("Open")) {
-		Document d;
-		std::string err;
-		std::string file = expand(ed.path_input);
-		if (load_document(file, d, &err)) {
-			ed.doc = std::move(d);
-			ed.path = file;
-			ed.selected = 0;
-			ed.status = "Opened " + ed.path;
-		} else {
-			ed.status = err;
+	doc = std::move(d);
+	path = file;
+	saved_json = document_json(doc);
+	modified = false;
+	selected = 0;
+	status = "Opened " + path;
+	return true;
+}
+
+bool Editor::write(const std::string &file)
+{
+	if (!save_document(file, doc)) {
+		status = "Cannot save " + file;
+		return false;
+	}
+	path = file;
+	saved_json = document_json(doc);
+	modified = false;
+	status = "Saved " + path;
+	return true;
+}
+
+bool Editor::save()
+{
+	if (path.empty()) {
+		save_as();
+		return false; // saved later, when a file is chosen
+	}
+	return write(path);
+}
+
+void Editor::save_as()
+{
+	std::string start = path.empty() ? path_string(path_of(config_dir()) / "sequences.json") : path;
+	dialog_kind = FileDialog::Save;
+	if (!dialog.start(FileDialog::Save, start)) after_save = None;
+}
+
+void Editor::request(Action a)
+{
+	if (dialog.open()) return; // one thing at a time
+	if (a == Reload && path.empty()) {
+		status = "Nothing to reload: this file was never saved";
+		return;
+	}
+	if (!modified) return run(a);
+	pending = a;
+	ask_pending = true;
+}
+
+void Editor::run(Action a)
+{
+	switch (a) {
+	case New:
+		doc = Document();
+		doc.buttons.push_back(Button());
+		path.clear();
+		saved_json = document_json(doc);
+		modified = false;
+		selected = 0;
+		status = "New file";
+		break;
+	case Open:
+		dialog_kind = FileDialog::Open;
+		dialog.start(FileDialog::Open, path.empty() ? config_dir() : path);
+		break;
+	case Reload:
+		if (load(path)) status = "Reloaded " + path;
+		break;
+	case Quit: quit = true; break;
+	case None: break;
+	}
+}
+
+bool Editor::close_requested()
+{
+	if (pending == Quit || dialog.open()) return false; // already asking / a file dialog is open
+	request(Quit);
+	return quit;
+}
+
+void Editor::poll_dialog()
+{
+	FileDialogResult r;
+	if (!dialog.poll(r)) return;
+	Action then = after_save;
+	after_save = None;
+	if (!r.error.empty()) {
+		status = r.error;
+	} else if (r.path.empty()) {
+		status = "Cancelled";
+	} else if (dialog_kind == FileDialog::Open) {
+		load(r.path);
+	} else if (write(with_json_extension(r.path))) {
+		run(then); // "Save" before New / Open / Quit on a file that was never saved
+	}
+}
+
+void Editor::menu_bar()
+{
+	bool ask_reset = false;
+	if (ImGui::BeginMenuBar()) {
+		if (ImGui::BeginMenu("File")) {
+			if (ImGui::MenuItem("New", "Ctrl+N")) request(New);
+			if (ImGui::MenuItem("Open...", "Ctrl+O")) request(Open);
+			if (ImGui::MenuItem("Reload from disk", "Ctrl+R", false, !path.empty())) request(Reload);
+			ImGui::Separator();
+			if (ImGui::MenuItem("Save", "Ctrl+S")) save();
+			if (ImGui::MenuItem("Save as...", "Ctrl+Shift+S")) save_as();
+			ImGui::Separator();
+			if (ImGui::MenuItem("Reset to default buttons...")) ask_reset = true;
+			ImGui::Separator();
+			if (ImGui::MenuItem("Quit", "Ctrl+Q")) request(Quit);
+			ImGui::EndMenu();
 		}
+		ImGui::EndMenuBar();
 	}
-	ImGui::SameLine();
-	if (ImGui::Button("Reset to default")) ImGui::OpenPopup("reset?");
-	if (ImGui::BeginPopupModal("reset?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-		ImGui::TextUnformatted("Replace every button with the default ones?");
-		if (ImGui::Button("Yes")) {
-			ed.doc = default_document();
-			ed.selected = 0;
-			dirty = true;
+	if (ask_reset) ImGui::OpenPopup("Reset?");
+}
+
+void Editor::shortcuts()
+{
+	if (dialog.open() || ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) return;
+	auto key = [](ImGuiKeyChord chord) { return ImGui::Shortcut(chord, ImGuiInputFlags_RouteGlobal); };
+	if (key(ImGuiMod_Ctrl | ImGuiKey_N)) request(New);
+	if (key(ImGuiMod_Ctrl | ImGuiKey_O)) request(Open);
+	if (key(ImGuiMod_Ctrl | ImGuiKey_R) || key(ImGuiKey_F5)) request(Reload);
+	if (key(ImGuiMod_Ctrl | ImGuiKey_S)) save();
+	if (key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)) save_as();
+	if (key(ImGuiMod_Ctrl | ImGuiKey_Q)) request(Quit);
+}
+
+void Editor::popups()
+{
+	std::string name = path.empty() ? "Untitled" : path_string(path_of(path).filename());
+	if (ask_pending) {
+		ImGui::OpenPopup(pending == Reload ? "Reload?" : "Unsaved changes");
+		ask_pending = false;
+	}
+	auto center = [] { ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f)); };
+
+	center();
+	if (ImGui::BeginPopupModal("Unsaved changes", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		const char *what = pending == New ? "starting a new file" : pending == Open ? "opening another file" : "closing";
+		ImGui::Text("Save the changes to '%s' before %s?", name.c_str(), what);
+		ImGui::Spacing();
+		if (ImGui::Button("Save", ImVec2(110, 0))) {
+			if (path.empty()) {
+				after_save = pending;
+				save_as();
+			} else if (write(path)) {
+				run(pending);
+			}
+			pending = None;
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("No")) ImGui::CloseCurrentPopup();
+		if (ImGui::Button("Don't save", ImVec2(110, 0))) {
+			run(pending);
+			pending = None;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel", ImVec2(110, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+			pending = None;
+			ImGui::CloseCurrentPopup();
+		}
 		ImGui::EndPopup();
 	}
-	ImGui::SameLine();
-	ImGui::TextDisabled("%s", ed.status.c_str());
+
+	center();
+	if (ImGui::BeginPopupModal("Reload?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		ImGui::Text("Discard your unsaved changes and reload '%s' from disk?", name.c_str());
+		ImGui::Spacing();
+		if (ImGui::Button("Reload", ImVec2(110, 0))) {
+			run(Reload);
+			pending = None;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel", ImVec2(110, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+			pending = None;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	center();
+	if (ImGui::BeginPopupModal("Reset?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		ImGui::TextUnformatted("Replace every button with the default ones?");
+		ImGui::Spacing();
+		if (ImGui::Button("Reset", ImVec2(110, 0))) {
+			doc = default_document();
+			selected = 0;
+			changed();
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel", ImVec2(110, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+		ImGui::EndPopup();
+	}
+
+	// Keeps the document from changing under a file dialog (it's a separate window, maybe behind this one).
+	if (dialog.open() && !ImGui::IsPopupOpen("File dialog")) ImGui::OpenPopup("File dialog");
+	center();
+	if (ImGui::BeginPopupModal("File dialog", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+		ImGui::TextUnformatted(dialog_kind == FileDialog::Open ? "Choose a file to open..." : "Choose where to save...");
+		if (!dialog.open()) ImGui::CloseCurrentPopup();
+		ImGui::EndPopup();
+	}
 }
 
 void Editor::draw()
 {
+	poll_dialog();
 	ImGuiViewport *vp = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(vp->WorkPos);
 	ImGui::SetNextWindowSize(vp->WorkSize);
 	ImGui::Begin("editor", nullptr,
 	             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-	                 ImGuiWindowFlags_NoBringToFrontOnFocus);
-	bool dirty = false;
-	file_bar(*this, dirty);
-	ImGui::Separator();
+	                 ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_MenuBar);
+	menu_bar();
+	shortcuts();
 
+	bool dirty = false;
+	float status_h = ImGui::GetFrameHeightWithSpacing();
+	ImGui::BeginChild("main", ImVec2(0, -status_h));
 	if (ImGui::BeginTable("layout", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
 		ImGui::TableSetupColumn("buttons", ImGuiTableColumnFlags_WidthFixed, 250);
 		ImGui::TableSetupColumn("blocks", ImGuiTableColumnFlags_WidthStretch);
@@ -440,10 +619,22 @@ void Editor::draw()
 		ImGui::EndChild();
 		ImGui::EndTable();
 	}
+	ImGui::EndChild();
 	if (g_move_pending) {
 		g_move_pending = false;
 		dirty |= apply_move(doc, g_move);
 	}
-	if (dirty) save();
+	if (dirty) changed();
+
+	// Status bar: the file, whether it is saved, the last thing that happened.
+	ImGui::Separator();
+	ImGui::TextUnformatted(path.empty() ? "Untitled" : path.c_str());
+	ImGui::SameLine();
+	if (modified) ImGui::TextColored(ImVec4(1, 0.7f, 0.3f, 1), "(modified, Ctrl+S to save)");
+	else ImGui::TextDisabled("(saved)");
+	ImGui::SameLine();
+	ImGui::TextDisabled(" %s", status.c_str());
+
+	popups();
 	ImGui::End();
 }

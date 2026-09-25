@@ -71,4 +71,5 @@ struct Document {
 
 bool load_document(const std::string &path, Document &doc, std::string *error = nullptr);
 bool save_document(const std::string &path, const Document &doc); // atomic: the old file survives a failure
+std::string document_json(const Document &doc); // what save_document writes
 Document default_document(); // a small example, written on first run

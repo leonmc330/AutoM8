@@ -22,7 +22,7 @@ hand in five terminals.
 
 | | |
 |---|---|
-| 🧱 **`autom8-editor`** | a small window to build the buttons and their block sequences (drag & drop, saved as you type) |
+| 🧱 **`autom8-editor`** | a small window to build the buttons and their block sequences (drag & drop, File menu, Ctrl+S) |
 | ▶️ **`autom8`** | a window with one big button per sequence, a live status line, every program's state and log. It can also press a button from the terminal, with no window |
 | 📄 **`sequences.json`** | where the buttons live: plain JSON, so you can also edit it by hand or keep it in git |
 
@@ -47,14 +47,14 @@ flowchart LR
     procs["⚙️ your programs<br/>servers, games, scripts..."]
 
     you -- drag & drop --> editor
-    editor -- "saves as you type<br/>(atomic write)" --> file
+    editor -- "Ctrl+S<br/>(atomic write)" --> file
     file -- "reloaded by itself<br/>when it changes" --> runner
     you -- "press a button" --> runner
     runner -- "start · watch output ·<br/>ask to quit · kill" --> procs
     procs -- "output, exit code" --> runner
 ```
 
-The two programs never talk to each other: the editor writes the file, the runner
+The two programs never talk to each other: the editor saves the file, the runner
 notices and reloads it (only while no sequence is running). You can keep both open side by side.
 
 ## A tour
@@ -102,6 +102,49 @@ with `^` `v`, removed with `x`.
 <td><b>+ add block</b>: the twelve block types, colour-coded by family.</td>
 </tr>
 </table>
+
+#### Files
+
+The editor works like any other: the title bar shows the file name, with a `*` while there are
+unsaved changes, and the status bar at the bottom shows the full path and what just happened.
+
+| File menu | Shortcut | |
+|---|---|---|
+| New | `Ctrl+N` | an empty *Untitled* file |
+| Open... | `Ctrl+O` | the system's file dialog (KDE / GNOME on Linux, Explorer's on Windows) |
+| Reload from disk | `Ctrl+R` `F5` | throws away your changes and reads the file again (asks first) |
+| Save | `Ctrl+S` | saves to the current file; an *Untitled* file asks where the first time, then remembers it |
+| Save as... | `Ctrl+Shift+S` | saves to another file, which becomes the current one |
+| Reset to default buttons... | | replaces every button with the example ones (asks first, not saved until you save) |
+| Quit | `Ctrl+Q` | same as closing the window |
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/editor-file-menu.png" alt="The File menu: New, Open, Reload from disk, Save, Save as, Reset to default buttons, Quit"></td>
+<td width="50%"><img src="docs/screenshots/editor-unsaved.png" alt="Closing with unsaved changes: Save / Don't save / Cancel"></td>
+</tr>
+<tr>
+<td>The <b>File</b> menu.</td>
+<td>Closing, opening another file or starting a new one with unsaved changes asks first.</td>
+</tr>
+</table>
+
+```mermaid
+flowchart LR
+    A(["New · Open · Quit"]) --> M{"unsaved<br/>changes?"}
+    M -- no --> Go(["do it"])
+    M -- yes --> Q{"Save / Don't save /<br/>Cancel"}
+    Q -- "Don't save" --> Go
+    Q -- Cancel --> Stay(["nothing happens"])
+    Q -- Save --> P{"file already<br/>has a path?"}
+    P -- yes --> W["save"] --> Go
+    P -- "no (Untitled)" --> D["Save as dialog"]
+    D -- "file chosen" --> W
+    D -- cancelled --> Stay
+```
+
+On Linux the file dialogs come from `kdialog` or `zenity` (the one matching your desktop first;
+most desktops have one of them already).
 
 ### The runner
 

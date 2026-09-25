@@ -18,7 +18,11 @@ int main(int argc, char **argv)
 	Editor ed(document_path(file));
 	GuiCallbacks cb;
 	cb.draw = [&] { ed.draw(); };
-	return run_gui("AutoM8 Editor " AUTOM8_VERSION, 1150, 740, cb) ? 0 : 1;
+	cb.busy = [&] { return ed.dialog.open(); }; // notice soon when the file dialog closes
+	cb.title = [&] { return ed.title(); };
+	cb.close_requested = [&] { return ed.close_requested(); };
+	cb.should_quit = [&] { return ed.quit; };
+	return run_gui(ed.title().c_str(), 1150, 740, cb) ? 0 : 1;
 }
 
 #ifdef _WIN32

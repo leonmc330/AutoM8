@@ -4,7 +4,7 @@ Compact reference for tools/agents. Human docs: README.md.
 
 ## What
 Linux + Windows automation from blocks. A *document* (JSON) holds *buttons*; each button has a *sequence* of *blocks*. Pressing a button runs its blocks in order.
-- `autom8-editor [--sequence] [FILE]`: GUI editor, saves on every change (atomic write).
+- `autom8-editor [--sequence] [FILE]`: GUI editor. File menu: New Ctrl+N, Open Ctrl+O, Reload from disk Ctrl+R/F5, Save Ctrl+S (Untitled → Save as dialog, then remembers path), Save as Ctrl+Shift+S, Reset to default buttons, Quit Ctrl+Q. Asks Save/Don't save/Cancel before dropping unsaved changes (New/Open/Quit/window close) and confirms Reload. Title shows `name*` when modified. Native dialogs: kdialog/zenity (Linux), common dialog (Windows). Saves are atomic.
 - `autom8 [--sequence] [FILE]`: GUI runner (one button per sequence, status line, program list with running dot / exit code / log / kill). Reloads the file when it changes, only while idle.
 - Pressing a button while one runs cancels the running sequence; programs already started keep running.
 
