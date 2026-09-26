@@ -4,8 +4,10 @@ name: build
 # and Windows x86_64 + arm64 and runs the tests on each, natively.
 # On main, when everything passes, it publishes a beta release numbered v001, v002, ... v999.
 #
-# Kept cheap: ccache (SDL2 / PCRE2 / ImGui are not recompiled every run), few jobs
-# (billing rounds every job up to a whole minute, Windows minutes count double), timeouts.
+# Kept cheap: ccache (SDL2 / PCRE2 / ImGui are not recompiled every run), cached CMake build
+# folders (SDL2's ~20 s of configure checks are not redone every run), cached .deb files (no
+# `apt-get update`), few jobs (billing rounds every job up to a whole minute, Windows minutes
+# count double), timeouts.
 
 on:
   push:
@@ -67,22 +69,33 @@ jobs:
       - uses: actions/checkout@v4
       - id: version
         run: .github/scripts/version.sh >> "$GITHUB_OUTPUT"
+      - id: image # the runner image: installed packages and compilers change with it
+        run: echo "id=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
           path: .ccache
           key: ccache-linux-${{ matrix.arch }}-${{ github.sha }}
           restore-keys: ccache-linux-${{ matrix.arch }}-
+      # Only an exact match: a build folder configured by another CMakeLists / compiler is not reused.
+      - uses: actions/cache@v4
+        with:
+          path: build
+          key: build-linux-${{ matrix.arch }}-${{ steps.image.outputs.id }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+      - uses: actions/cache@v4
+        with:
+          path: .apt-debs
+          key: apt-linux-${{ matrix.arch }}-${{ steps.image.outputs.id }}-${{ hashFiles('.github/workflows/build.yml') }}
       - name: Install build dependencies
         run: |
-          sudo apt-get update
           # SDL2 is built from source: it needs the X11 / Wayland headers (it loads the libraries at run time).
           # gcc and cmake come with the runner image.
-          sudo apt-get install -y --no-install-recommends ninja-build ccache pkg-config libpcre2-dev \
+          .github/scripts/apt-install.sh .apt-debs ninja-build ccache pkg-config libpcre2-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev \
             libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgles2-mesa-dev \
             libdrm-dev libgbm-dev libdecor-0-dev
       - name: Build (SDL2 + PCRE2 static)
         run: |
+          ccache -z # the stats printed in Package are this run's
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DAUTOM8_VENDORED_DEPS=ON \
             -DAUTOM8_BUILD_NUMBER=${{ steps.version.outputs.number }}
           cmake --build build
@@ -122,14 +135,26 @@ jobs:
       - uses: actions/checkout@v4
       - id: version
         run: .github/scripts/version.sh >> "$GITHUB_OUTPUT"
+      - id: image
+        run: echo "id=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
           path: .ccache
           key: ccache-windows-${{ github.sha }}
           restore-keys: ccache-windows-
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build-x86_64
+            build-arm64
+          key: build-windows-${{ env.LLVM_MINGW }}-${{ steps.image.outputs.id }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+      - uses: actions/cache@v4
+        with:
+          path: .apt-debs
+          key: apt-windows-${{ steps.image.outputs.id }}-${{ hashFiles('.github/workflows/build.yml') }}
       - name: Install llvm-mingw
         run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build ccache
+          .github/scripts/apt-install.sh .apt-debs ninja-build ccache
           curl -fsSL -o llvm-mingw.tar.xz "https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/$LLVM_MINGW.tar.xz"
           echo "$LLVM_MINGW_SHA256  llvm-mingw.tar.xz" | sha256sum -c -
           tar xf llvm-mingw.tar.xz -C "$RUNNER_TEMP"
@@ -137,6 +162,7 @@ jobs:
           echo "LLVM_MINGW=$RUNNER_TEMP/$LLVM_MINGW" >> "$GITHUB_ENV"
       - name: Build and package (cross-compile)
         run: |
+          ccache -z
           for arch in x86_64 arm64; do
             mingw_arch=$arch
             [ "$arch" = arm64 ] && mingw_arch=aarch64
