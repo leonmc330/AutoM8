@@ -5,6 +5,8 @@
 #include "moves.hpp"
 #include "process.hpp"
 #include "regex.hpp"
+#include "runner.hpp"
+#include "values.hpp"
 #include "util.hpp"
 
 #include <csignal>
@@ -13,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <thread>
+#include <algorithm>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -195,6 +198,137 @@ static void test_moves()
 	CHECK(s.size() == 2);
 }
 
+static void test_values()
+{
+	Values vals = {{"n", 3.0}, {"s", std::string("hi")}, {"yes", true}};
+	Value v;
+	std::string err;
+	CHECK(evaluate(" n ", vals, v, err) && std::get<double>(v) == 3);
+	CHECK(evaluate("2.5", vals, v, err) && std::get<double>(v) == 2.5);
+	CHECK(evaluate("\"a \\\"b\\\"\"", vals, v, err) && std::get<std::string>(v) == "a \"b\"");
+	CHECK(evaluate("'x'", vals, v, err) && std::get<std::string>(v) == "x");
+	CHECK(evaluate("false", vals, v, err) && !std::get<bool>(v));
+	CHECK(!evaluate("nope", vals, v, err) && err.find("nope") != std::string::npos);
+	CHECK(!evaluate("\"open", vals, v, err));
+	CHECK(!evaluate("", vals, v, err));
+	CHECK(is_literal("1e3") && is_literal("\"t\"") && !is_literal("n") && !is_literal("inf"));
+
+	auto op = [&](Op o, Value a, Value b) {
+		Value out;
+		return operate(o, a, b, out, err) ? to_text(out) : "error";
+	};
+	CHECK(op(Op::Add, 1.0, 2.0) == "3");
+	CHECK(op(Op::Add, 0.1, 0.2) == "0.3");
+	CHECK(op(Op::Sub, 1.0, 2.5) == "-1.5");
+	CHECK(op(Op::Mul, 4.0, 2.5) == "10");
+	CHECK(op(Op::Div, 1.0, 4.0) == "0.25");
+	CHECK(op(Op::Div, 1.0, 0.0) == "error" && err == "division by zero");
+	CHECK(op(Op::Add, std::string("string1 "), std::string("string2")) == "string1 string2");
+	CHECK(op(Op::Add, std::string("n = "), 3.0) == "n = 3");
+	CHECK(op(Op::Sub, std::string("a"), 1.0) == "error");
+	CHECK(op(Op::And, true, false) == "false" && op(Op::Or, true, false) == "true");
+	CHECK(op(Op::Xor, true, true) == "false" && op(Op::Not, true, false) == "false");
+	CHECK(op(Op::And, true, 1.0) == "error" && op(Op::Add, true, 1.0) == "error");
+
+	auto cmp = [&](Cmp c, Value a, Value b) {
+		bool out = false;
+		return compare(c, a, b, out, err) ? (out ? 1 : 0) : -1;
+	};
+	CHECK(cmp(Cmp::Lt, 2.0, 10.0) == 1 && cmp(Cmp::Ge, 2.0, 2.0) == 1 && cmp(Cmp::Gt, 2.0, 2.0) == 0);
+	CHECK(cmp(Cmp::Lt, std::string("abc"), std::string("abd")) == 1);
+	CHECK(cmp(Cmp::Eq, std::string("a"), std::string("a")) == 1 && cmp(Cmp::Ne, true, false) == 1);
+	CHECK(cmp(Cmp::Eq, 1.0, std::string("1")) == 0 && cmp(Cmp::Ne, 1.0, std::string("1")) == 1);
+	CHECK(cmp(Cmp::Lt, 1.0, std::string("1")) == -1 && cmp(Cmp::Lt, true, false) == -1);
+
+	CHECK(substitute("n={n}, {s}! {none} {yes}{", vals) == "n=3, hi! {none} true{");
+	CHECK(substitute("{n}", {}) == "{n}");
+}
+
+static Block set_value(const std::string &name, VK kind, const std::string &text, bool flag = false)
+{
+	Block b;
+	b.type = BT::SetValue;
+	b.name = name;
+	b.kind = kind;
+	b.command = text;
+	b.flag = flag;
+	return b;
+}
+
+static Block operate_block(const std::string &name, const std::string &l, Op o, const std::string &r)
+{
+	Block b;
+	b.type = BT::Operate;
+	b.name = name;
+	b.left = l;
+	b.op = o;
+	b.right = r;
+	return b;
+}
+
+static void run_button(Runner &r, const std::string &name)
+{
+	r.error_text.clear();
+	r.press(name);
+	for (int i = 0; i < 1000 && r.active; i++) r.update();
+}
+
+static void test_value_blocks()
+{
+	// count to 3 with a Repeat until, then join texts and check yes/no logic
+	Block loop;
+	loop.type = BT::RepeatUntil;
+	loop.cond.type = CT::Compare;
+	loop.cond.left = "i";
+	loop.cond.cmp = Cmp::Ge;
+	loop.cond.right = "3";
+	loop.body = {operate_block("i", "i", Op::Add, "1")};
+	Block check = block_if({msg("both")});
+	check.cond.type = CT::ValueTrue;
+	check.cond.left = "both";
+	check.else_body = {msg("not both")};
+
+	Document d;
+	d.buttons.push_back({"count", {0, 0, 0, 1},
+	                     {set_value("i", VK::Number, "0"), loop, set_value("s", VK::Text, "string1 "),
+	                      operate_block("s", "s", Op::Add, "\"string2\""), msg("i={i} s={s}"),
+	                      set_value("a", VK::Bool, "", true), operate_block("b", "a", Op::Not, ""),
+	                      operate_block("both", "a", Op::Or, "b"), check}});
+	d.buttons.push_back({"bad number", {0, 0, 0, 1}, {set_value("x", VK::Number, "12abc"), msg("after")}});
+	d.buttons.push_back({"unknown", {0, 0, 0, 1}, {block_if({msg("then")})}});
+	d.buttons.back().seq[0].cond.type = CT::ValueTrue;
+	d.buttons.back().seq[0].cond.left = "missing";
+	d.buttons.push_back({"sees nothing", {0, 0, 0, 1}, {msg("i={i}")}});
+
+	std::string path = path_string(fs::temp_directory_path() / "autom8-values-test.json");
+	CHECK(save_document(path, d));
+	// The file round-trips, typed values included.
+	Document back;
+	CHECK(load_document(path, back));
+	CHECK(document_json(back) == document_json(d));
+	CHECK(back.buttons[0].seq[0].kind == VK::Number && back.buttons[0].seq[0].command == "0");
+	CHECK(back.buttons[0].seq[1].cond.cmp == Cmp::Ge && back.buttons[0].seq[3].op == Op::Add);
+	CHECK(back.buttons[1].seq[0].command == "12abc"); // kept as typed, fails when run
+	CHECK(document_json(d).find("\"value\": 0.0") != std::string::npos);
+
+	Runner r(path);
+	auto said = [&](const std::string &s) { return std::find(r.history.begin(), r.history.end(), s) != r.history.end(); };
+	run_button(r, "count");
+	CHECK(r.error_text.empty());
+	CHECK(said("i=3 s=string1 string2"));
+	CHECK(said("both") && !said("not both"));
+	CHECK(r.values.empty()); // dropped once the sequence ended
+
+	run_button(r, "bad number");
+	CHECK(r.error_text.find("not a number") != std::string::npos && !said("after"));
+	run_button(r, "unknown");
+	CHECK(r.error_text.find("missing") != std::string::npos && !said("then"));
+	// Values belong to one press of one button.
+	run_button(r, "sees nothing");
+	CHECK(said("i={i}"));
+	fs::remove(path_of(path));
+}
+
 static void test_regex()
 {
 	// The default VR check pattern on ~400 KB of output crashed std::regex (stack overflow).
@@ -332,6 +466,8 @@ int main()
 	test_json_round_trip();
 	test_config();
 	test_moves();
+	test_values();
+	test_value_blocks();
 	test_regex();
 	test_process();
 	printf("%d passed, %d failed\n", g_passed, g_failed);

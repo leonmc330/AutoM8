@@ -30,7 +30,7 @@ hand in five terminals.
 
 - [How it fits together](#how-it-fits-together)
 - [A tour](#a-tour)
-- [Blocks](#blocks) · [Conditions](#conditions)
+- [Blocks](#blocks) · [Conditions](#conditions) · [Values](#values)
 - [Download](#download)
 - [Use](#use) · [From the terminal](#from-the-terminal-no-window) · [Where the file is](#where-the-sequence-file-is)
 - [Build](#build)
@@ -99,7 +99,7 @@ with `^` `v`, removed with `x`.
 </tr>
 <tr>
 <td><b>Stop</b>: ask the web server to quit, kill it if it's still there after 3 s, say so.</td>
-<td><b>+ add block</b>: the twelve block types, colour-coded by family.</td>
+<td><b>+ add block</b>: the block types, colour-coded by family.</td>
 </tr>
 </table>
 
@@ -194,10 +194,12 @@ Pressing a button while another sequence runs cancels that sequence and starts t
 | 🟧 | **If ... else** | Runs one of two block lists depending on a condition |
 | 🟧 | **Repeat N times** | Loops (`-1` = forever) |
 | 🟧 | **Repeat until** | Checks the condition, runs the body if it's false, again and again |
+| 🟪 | **Set value** | Gives a [value](#values) a number, a text or a yes/no |
+| 🟪 | **Operate on values** | *result* = *left* `+` `-` `*` `/` `and` `or` `xor` `not` *right* (`+` also joins texts) |
 | 🟥 | **Kill program** | Kills a program by its Run block name (and processes matching that block's **Match**) |
 | 🟥 | **Kill matching processes** | Kills every process whose command line contains one of the patterns |
 | 🟥 | **Kill all programs** | Kills every program named by a Run block in the file |
-| 🟩 | **Show message** | In the status line, or as a popup |
+| 🟩 | **Show message** | In the status line, or as a popup. `{name}` shows a value |
 | ⬜ | **Stop sequence** | Ends here, quietly |
 | 🟥 | **Throw error** | Ends here, as an error (popup in the window, exit code `1` in the terminal) |
 
@@ -249,9 +251,43 @@ Used by **Wait until**, **If ... else** and **Repeat until**. Any condition can 
 | shell *command* succeeds | it exits with `0` |
 | last exit code of *program* is *N* | |
 | user answers Yes to *question* | a Yes / No popup in the window, `[y/N]` in the terminal |
+| compare values *left* `<` `>` `<=` `>=` `==` `!=` *right* | see [Values](#values) |
+| *value* is true | the yes/no value is true |
 
 Regexes are Perl-compatible ([PCRE2](https://www.pcre.org/current/doc/html/pcre2syntax.html)).
 Commands and paths expand `~`, `$VAR` and `${VAR}`.
+
+## Values
+
+A sequence can keep **values**, like variables in Python: a **number**, a **text** or a **yes/no**.
+**Set value** creates or changes one, **Operate on values** computes one from two others, and
+the *compare values* and *value is true* conditions test them in **If**, **Wait until** and **Repeat until**.
+
+<p align="center"><img src="docs/screenshots/editor-values.png" alt="The editor: Set value i to 0, then Repeat until i >= 5 with Operate on values i = i + 1" width="820"></p>
+
+- **Each press has its own values.** They start empty when a button is pressed and are dropped
+  when its sequence ends; one button never sees another's. Nothing to declare or free.
+- **Set value** has a name, a kind and a value: a text field for numbers and texts (a number
+  that isn't one is shown in red, and fails when run), a checkbox for yes/no. The first **Set value**
+  of a name picks its kind; later ones for the same name follow it.
+- In **Operate** and **compare** fields you write, like in Python: a value's name (`count`),
+  a number (`1`, `2.5`), a text in quotes (`"hello "` or `'hello '`) or `true` / `false`.
+  The editor warns about names no block of the button sets.
+
+| Operation | On | Gives |
+|---|---|---|
+| `+` `-` `*` `/` | two numbers | a number (`/` by zero is an error) |
+| `+` | two texts, or a text and anything | the texts joined: `"string1 "` + `"string2"` = `string1 string2`, `"n = "` + `3` = `n = 3` |
+| `and` `or` `xor` | two yes/no | a yes/no |
+| `not` | one yes/no (*left*) | the opposite |
+
+Compare: numbers and texts (alphabetical) with `<` `>` `<=` `>=` `==` `!=`, yes/no with `==` `!=`.
+Different kinds are never equal (`1 == "1"` is false) and can't be ordered.
+
+**Show message**, **Throw error** and the *user answers Yes* question replace `{name}` with the value
+(`Count: {i}` → `Count: 3`). A mistake while running (a name nothing set, `"a" - 1`...) stops
+the sequence as an error, like **Throw error**. [`examples/values.json`](examples/values.json)
+counts to 5 and combines two questions with `xor`.
 
 ## Download
 

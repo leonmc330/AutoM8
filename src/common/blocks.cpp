@@ -14,6 +14,8 @@ const BlockInfo kBlocks[] = {
 	{BT::If, "if", "If ... else", {0.85f, 0.45f, 0.15f, 1}},
 	{BT::RepeatN, "repeat", "Repeat N times", {0.85f, 0.45f, 0.15f, 1}},
 	{BT::RepeatUntil, "repeat_until", "Repeat until", {0.85f, 0.45f, 0.15f, 1}},
+	{BT::SetValue, "set", "Set value", {0.55f, 0.35f, 0.80f, 1}},
+	{BT::Operate, "operate", "Operate on values", {0.55f, 0.35f, 0.80f, 1}},
 	{BT::KillProgram, "kill", "Kill program", {0.80f, 0.25f, 0.30f, 1}},
 	{BT::KillMatching, "kill_matching", "Kill matching processes", {0.80f, 0.25f, 0.30f, 1}},
 	{BT::KillAll, "kill_all", "Kill all programs", {0.80f, 0.25f, 0.30f, 1}},
@@ -31,14 +33,17 @@ const BlockInfo &info(BT t)
 }
 
 static const char *const kCondIds[] = {"output_matches",   "program_running", "process_running", "file_exists",
-                                       "command_succeeds", "exit_code_is",    "user_says_yes"};
+                                       "command_succeeds", "exit_code_is",    "user_says_yes",
+                                       "compare",          "value_is_true"};
 const char *const kCondLabels[] = {"output of program matches regex",
                                    "program is running",
                                    "process matching pattern is running",
                                    "file exists",
                                    "shell command succeeds",
                                    "last exit code of program is",
-                                   "user answers Yes to"};
+                                   "user answers Yes to",
+                                   "compare values",
+                                   "value is true"};
 const int kCondCount = sizeof(kCondLabels) / sizeof(kCondLabels[0]);
 
 Button *Document::find(const std::string &name)
@@ -53,10 +58,21 @@ Button *Document::find(const std::string &name)
 static json seq_to_json(const Seq &s);
 static Seq seq_from_json(const json &a);
 
+template <typename E> static E enum_from(const json &j, const char *key, const char *const ids[], int n, E def)
+{
+	std::string s = j.value(key, "");
+	for (int i = 0; i < n; i++)
+		if (s == ids[i]) return (E)i;
+	return def;
+}
+
 static json cond_to_json(const Condition &c)
 {
-	return {{"type", kCondIds[(int)c.type]}, {"not", c.negate}, {"program", c.program}, {"text", c.text},
-	        {"number", c.number}};
+	json j = {{"type", kCondIds[(int)c.type]}, {"not", c.negate}};
+	if (c.type == CT::Compare) j.update({{"left", c.left}, {"op", kCmpIds[(int)c.cmp]}, {"right", c.right}});
+	else if (c.type == CT::ValueTrue) j["value"] = c.left;
+	else j.update({{"program", c.program}, {"text", c.text}, {"number", c.number}});
+	return j;
 }
 
 static Condition cond_from_json(const json &j)
@@ -69,6 +85,9 @@ static Condition cond_from_json(const json &j)
 	c.program = j.value("program", "");
 	c.text = j.value("text", "");
 	c.number = j.value("number", 0);
+	c.left = j.value("left", j.value("value", ""));
+	c.right = j.value("right", "");
+	c.cmp = enum_from(j, "op", kCmpIds, kCmpCount, Cmp::Eq);
 	return c;
 }
 
@@ -90,6 +109,17 @@ static json block_to_json(const Block &b)
 		break;
 	case BT::RepeatN: j.update({{"count", b.count}, {"body", seq_to_json(b.body)}}); break;
 	case BT::RepeatUntil: j.update({{"condition", cond_to_json(b.cond)}, {"body", seq_to_json(b.body)}}); break;
+	case BT::SetValue: {
+		json v = b.command;
+		double d;
+		if (b.kind == VK::Bool) v = b.flag;
+		else if (b.kind == VK::Number && parse_number(b.command, d)) v = d; // else kept as typed: an error when run
+		j.update({{"name", b.name}, {"kind", kKindIds[(int)b.kind]}, {"value", v}});
+		break;
+	}
+	case BT::Operate:
+		j.update({{"name", b.name}, {"left", b.left}, {"op", kOpIds[(int)b.op]}, {"right", b.right}});
+		break;
 	case BT::KillProgram: j.update({{"name", b.name}, {"graceful_seconds", b.graceful_s}}); break;
 	case BT::KillMatching: j.update({{"match", b.match}, {"graceful_seconds", b.graceful_s}}); break;
 	case BT::KillAll: j["graceful_seconds"] = b.graceful_s; break;
@@ -121,6 +151,17 @@ static Block block_from_json(const json &j)
 	b.stop_on_timeout = j.value("stop_on_timeout", false);
 	b.count = j.value("count", 3);
 	b.popup = j.value("popup", false);
+	b.left = j.value("left", "");
+	b.right = j.value("right", "");
+	b.op = enum_from(j, "op", kOpIds, kOpCount, Op::Add);
+	if (b.type == BT::SetValue) {
+		const json &v = j.contains("value") ? j["value"] : json();
+		b.kind = v.is_boolean() ? VK::Bool : v.is_string() ? VK::Text : VK::Number; // no "kind": from the value
+		b.kind = enum_from(j, "kind", kKindIds, kKindCount, b.kind);
+		if (v.is_boolean()) b.flag = v.get<bool>();
+		else if (v.is_number()) b.command = to_text(v.get<double>());
+		else if (v.is_string()) b.command = v.get<std::string>();
+	}
 	if (j.contains("condition")) b.cond = cond_from_json(j["condition"]);
 	if (j.contains("then")) b.body = seq_from_json(j["then"]);
 	if (j.contains("body")) b.body = seq_from_json(j["body"]);

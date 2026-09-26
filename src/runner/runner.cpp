@@ -35,6 +35,21 @@ void Runner::say(const std::string &msg)
 	}
 }
 
+void Runner::fail(const std::string &msg)
+{
+	error_text = msg.empty() ? "Error" : msg;
+	say(running_button + " failed: " + error_text);
+	active = false;
+}
+
+bool Runner::value_of(const std::string &operand, Value &out)
+{
+	std::string err;
+	if (evaluate(operand, values, out, err)) return true;
+	fail(err);
+	return false;
+}
+
 void Runner::set_doc(Document d)
 {
 	doc = std::move(d);
@@ -157,6 +172,7 @@ void Runner::press(const std::string &name)
 	stack = {{&b->seq, 0}};
 	started = false;
 	loops.clear();
+	values.clear();
 	asking = ask_open = false;
 	say(name + ": running");
 }
@@ -219,7 +235,7 @@ int Runner::eval(const Condition &c, bool first)
 	}
 	case CT::UserSaysYes:
 		if (first) {
-			ask_text = c.text;
+			ask_text = substitute(c.text, values);
 			ask_answer = -1;
 			asking = ask_open = true;
 			return -1;
@@ -229,6 +245,28 @@ int Runner::eval(const Condition &c, bool first)
 		ask_answer = -1;
 		asking = false;
 		break;
+	case CT::Compare: {
+		Value a, b;
+		std::string err;
+		bool out = false;
+		if (!value_of(c.left, a) || !value_of(c.right, b)) return 0;
+		if (!compare(c.cmp, a, b, out, err)) {
+			fail(err);
+			return 0;
+		}
+		r = out;
+		break;
+	}
+	case CT::ValueTrue: {
+		Value v;
+		if (!value_of(c.left, v)) return 0;
+		if (kind_of(v) != VK::Bool) {
+			fail("'" + trim(c.left) + "' is a " + kKindLabels[v.index()] + ", not a yes/no");
+			return 0;
+		}
+		r = std::get<bool>(v);
+		break;
+	}
 	}
 	return c.negate ? !r : r;
 }
@@ -302,19 +340,35 @@ bool Runner::step(Block &b, bool first)
 	case BT::KillProgram:
 	case BT::KillMatching:
 	case BT::KillAll: return kill_step(b, first);
-	case BT::Message:
-		say(b.command);
-		if (b.popup) popup_text = b.command;
+	case BT::SetValue: {
+		double d;
+		if (b.name.empty()) fail("Set value: the value has no name");
+		else if (b.kind == VK::Bool) values[b.name] = b.flag;
+		else if (b.kind == VK::Text) values[b.name] = b.command;
+		else if (parse_number(b.command, d)) values[b.name] = d;
+		else fail("Set value " + b.name + ": '" + b.command + "' is not a number");
 		return true;
+	}
+	case BT::Operate: {
+		Value l, r = false, out;
+		std::string err;
+		if (b.name.empty()) fail("Operate: the result has no name");
+		else if (!value_of(b.left, l) || (b.op != Op::Not && !value_of(b.right, r))) return true;
+		else if (!operate(b.op, l, r, out, err)) fail(b.name + ": " + err);
+		else values[b.name] = std::move(out);
+		return true;
+	}
+	case BT::Message: {
+		std::string text = substitute(b.command, values);
+		say(text);
+		if (b.popup) popup_text = text;
+		return true;
+	}
 	case BT::Stop:
 		say(running_button + ": stopped by a block");
 		active = false;
 		return true;
-	case BT::Throw:
-		error_text = b.command.empty() ? "Error" : b.command;
-		say(running_button + " failed: " + error_text);
-		active = false;
-		return true;
+	case BT::Throw: fail(substitute(b.command, values)); return true;
 	case BT::If:
 	case BT::RepeatN:
 	case BT::RepeatUntil: return true; // handled in update()
@@ -342,6 +396,7 @@ void Runner::update()
 
 		if (b.type == BT::If || b.type == BT::RepeatUntil) {
 			int r = eval(b.cond, first);
+			if (!active) break; // the condition failed (unknown value...)
 			if (r < 0) { // still evaluating (question, shell command...)
 				started = true;
 				break;
@@ -381,4 +436,5 @@ void Runner::update()
 		started = true;
 		break; // waiting: resume next time
 	}
+	if (!active) values.clear(); // they only live while their sequence runs
 }

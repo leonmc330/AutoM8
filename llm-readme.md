@@ -34,7 +34,7 @@ FILE may be relative; `~`, `$VAR`, `${VAR}` expanded. The editor without FILE fi
   {"name": "Start", "color": [r,g,b,a], "sequence": [BLOCK, ...]}
 ]}
 ```
-`version`: format version (missing = 1). Programs read versions kMinDocumentVersion..kDocumentVersion (`src/common/blocks.hpp`, now 1..1) and refuse others (runner: exit 1 / error; editor: opens Untitled instead, never saves over it).
+`version`: format version (missing = 1). Programs read versions kMinDocumentVersion..kDocumentVersion (`src/common/blocks.hpp`, now 1..2; 2 added values) and refuse others (runner: exit 1 / error; editor: opens Untitled instead, never saves over it).
 `color` floats 0–1 (alpha optional). Legacy `{"start":[...],"stop":[...]}` is read as two buttons.
 
 ### Blocks (`type` → fields, defaults)
@@ -46,12 +46,14 @@ FILE may be relative; `~`, `$VAR`, `${VAR}` expanded. The editor without FILE fi
 | `if` | `condition`, `then` [..], `else` [..] |
 | `repeat` | `count` 3 (-1 forever), `body` [..] |
 | `repeat_until` | `condition`, `body` [..] — condition checked first; body runs while false |
+| `set` | `name`, `kind` "number"\|"text"\|"bool" (missing: from the JSON type of `value`), `value` (number / string / bool; a number-kind string that doesn't parse fails when run) |
+| `operate` | `name` (result), `left`, `op` `+ - * / and or xor not`, `right` (unused by `not`) — operands, see Values |
 | `kill` | `name` (run block name; also kills processes matching its `match`), `graceful_seconds` 0 |
 | `kill_matching` | `match` (comma-separated substrings, any matches), `graceful_seconds` 0 |
 | `kill_all` | `graceful_seconds` 0 — every program named by a run block |
-| `message` | `text`, `popup` false |
+| `message` | `text` (`{name}` → value), `popup` false |
 | `stop` | — (ends sequence quietly) |
-| `throw` | `text` (ends sequence as error) |
+| `throw` | `text` (ends sequence as error; `{name}` → value) |
 
 Semantics:
 - `run` non-blocking → next block immediately. Blocking → next when (exited AND ≥ min_seconds) OR ≥ max_seconds (program keeps running).
@@ -68,8 +70,17 @@ Semantics:
 | `file_exists` | text=path | path exists |
 | `command_succeeds` | text=shell command | exit code 0 |
 | `exit_code_is` | program, number | program's last exit code == number |
-| `user_says_yes` | text=question | user answers Yes (GUI popup / terminal y) |
-`not: true` negates.
+| `user_says_yes` | text=question (`{name}` → value) | user answers Yes (GUI popup / terminal y) |
+| `compare` | `left`, `op` `< > <= >= == !=`, `right` (operands) | comparison holds |
+| `value_is_true` | `value` (operand) | it's a bool and true (else error) |
+`not: true` negates. `compare` / `value_is_true` objects carry only their own fields.
+
+### Values
+Per press of a button: empty at press, dropped when the sequence ends, invisible to other buttons. Kinds: number (double, shown `%.15g`), text, bool. Operand syntax (Python-like): `"text"` / `'text'` (escapes `\" \' \\ \n`), `true`/`false`, a number, else a value name (unknown → error).
+- `+ - * /` numbers (`/0` error); `+` with any text side joins as text (`"n = "+3` → `n = 3`); `and or xor` two bools; `not` one bool. Other mixes → error.
+- Compare: same kind; numbers/texts all six ops (texts byte order), bools `== !=`; different kinds: `==` false, `!=` true, ordering → error.
+- Any runtime value error ends the sequence as an error (like `throw`: popup / exit 1).
+- Editor: first `set` of a name fixes its kind, later `set`s follow it; red note on a non-number; warning on operand names no `set`/`operate` of the button defines. Example: `examples/values.json`.
 
 ## Example (examples/web-server.json, Linux)
 ```json
@@ -105,4 +116,4 @@ cmake -B build -G Ninja && cmake --build build && ctest --test-dir build
 Options: `-DAUTOM8_VENDORED_DEPS=ON` (static SDL2/PCRE2; default on Windows), `-DAUTOM8_SANITIZE=ON`, `-DAUTOM8_GUI=OFF` (engine + tests only). Windows cross-build: `-DCMAKE_TOOLCHAIN_FILE=cmake/llvm-mingw.cmake -DMINGW_ARCH=x86_64|aarch64` with `LLVM_MINGW` set.
 
 ## Source map
-`src/common/blocks.*` model + JSON · `src/common/gui.*` SDL2/ImGui shell · `src/common/util.*` paths/expansion · `src/editor/*` editor · `src/runner/runner.*` engine · `src/runner/process_{posix,win}.cpp` processes · `src/runner/regex.*` PCRE2 · `src/runner/window.*` runner UI · `tests/tests.cpp`.
+`src/common/blocks.*` model + JSON · `src/common/values.*` values, operands, operations · `src/common/gui.*` SDL2/ImGui shell · `src/common/util.*` paths/expansion · `src/editor/*` editor · `src/runner/runner.*` engine · `src/runner/process_{posix,win}.cpp` processes · `src/runner/regex.*` PCRE2 · `src/runner/window.*` runner UI · `tests/tests.cpp`.

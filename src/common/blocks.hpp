@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nlohmann/json.hpp"
+#include "values.hpp"
 
 #include <string>
 #include <vector>
@@ -9,7 +10,7 @@
 using json = nlohmann::json;
 
 enum class BT {
-	Run, WaitSeconds, WaitUntil, If, RepeatN, RepeatUntil,
+	Run, WaitSeconds, WaitUntil, If, RepeatN, RepeatUntil, SetValue, Operate,
 	KillProgram, KillMatching, KillAll, Message, Stop, Throw
 };
 
@@ -28,7 +29,10 @@ extern const BlockInfo kBlocks[];
 extern const int kBlockCount;
 const BlockInfo &info(BT t);
 
-enum class CT { OutputMatches, ProgramRunning, ProcessRunning, FileExists, CommandSucceeds, ExitCodeIs, UserSaysYes };
+enum class CT {
+	OutputMatches, ProgramRunning, ProcessRunning, FileExists, CommandSucceeds, ExitCodeIs, UserSaysYes,
+	Compare, ValueTrue
+};
 extern const char *const kCondLabels[];
 extern const int kCondCount;
 
@@ -38,6 +42,8 @@ struct Condition {
 	std::string program; // program name (output / running / exit code)
 	std::string text;    // regex / patterns / path / command / question
 	int number = 0;      // exit code
+	std::string left, right; // Compare: operands (see evaluate()); ValueTrue: `left`
+	Cmp cmp = Cmp::Eq;
 };
 
 struct Block {
@@ -52,6 +58,12 @@ struct Block {
 	int count = 3;        // Repeat N times (-1 = forever)
 	bool stop_on_timeout = false;
 	bool popup = false;   // Show message
+	// Set value (`name` = the value, `command` = number / text as typed, `flag` = yes/no)
+	VK kind = VK::Number;
+	bool flag = false;
+	// Operate: name = left OP right
+	std::string left, right;
+	Op op = Op::Add;
 	Condition cond;
 	std::vector<Block> body, else_body; // If then/else, loop bodies
 };
@@ -73,7 +85,7 @@ struct Document {
 // A program reads kMinDocumentVersion..kDocumentVersion and refuses the others, so it never
 // runs or saves over a file whose format it doesn't know. Bump kDocumentVersion when the format
 // changes; raise kMinDocumentVersion only when older files can't be read anymore.
-constexpr int kDocumentVersion = 1;
+constexpr int kDocumentVersion = 2; // 2: values (Set value, Operate, compare conditions)
 constexpr int kMinDocumentVersion = 1;
 
 // false: `error` says why, `incompatible` is set when the file's version is the reason.

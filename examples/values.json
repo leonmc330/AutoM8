@@ -1,0 +1,37 @@
+{
+  "version": 2,
+  "buttons": [
+    {
+      "name": "Count to 5",
+      "color": [0.55, 0.35, 0.8, 1],
+      "sequence": [
+        {"type": "set", "name": "i", "kind": "number", "value": 0},
+        {"type": "set", "name": "list", "kind": "text", "value": "Counted:"},
+        {"type": "repeat_until", "condition": {"type": "compare", "left": "i", "op": ">=", "right": "5"}, "body": [
+          {"type": "operate", "name": "i", "left": "i", "op": "+", "right": "1"},
+          {"type": "operate", "name": "list", "left": "list", "op": "+", "right": "\" \""},
+          {"type": "operate", "name": "list", "left": "list", "op": "+", "right": "i"},
+          {"type": "message", "text": "i is {i}"},
+          {"type": "wait", "seconds": 0.5}
+        ]},
+        {"type": "message", "text": "{list}", "popup": true}
+      ]
+    },
+    {
+      "name": "Ask twice",
+      "color": [0.26, 0.45, 0.85, 1],
+      "sequence": [
+        {"type": "set", "name": "coffee", "kind": "bool", "value": false},
+        {"type": "set", "name": "tea", "kind": "bool", "value": false},
+        {"type": "if", "condition": {"type": "user_says_yes", "text": "Coffee?"},
+         "then": [{"type": "set", "name": "coffee", "value": true}], "else": []},
+        {"type": "if", "condition": {"type": "user_says_yes", "text": "Tea?"},
+         "then": [{"type": "set", "name": "tea", "value": true}], "else": []},
+        {"type": "operate", "name": "one", "left": "coffee", "op": "xor", "right": "tea"},
+        {"type": "if", "condition": {"type": "value_is_true", "value": "one"},
+         "then": [{"type": "message", "text": "Just one, good choice.", "popup": true}],
+         "else": [{"type": "message", "text": "Coffee: {coffee}, tea: {tea}. Both or neither!", "popup": true}]}
+      ]
+    }
+  ]
+}

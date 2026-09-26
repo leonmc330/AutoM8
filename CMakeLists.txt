@@ -111,7 +111,7 @@ function(autom8_warnings target)
 endfunction()
 
 # document model, JSON, helpers
-add_library(autom8_common STATIC src/common/blocks.cpp src/common/config.cpp src/common/util.cpp)
+add_library(autom8_common STATIC src/common/blocks.cpp src/common/config.cpp src/common/util.cpp src/common/values.cpp)
 target_include_directories(autom8_common PUBLIC src/common third_party)
 if(WIN32)
 	target_link_libraries(autom8_common PUBLIC shell32)

@@ -12,8 +12,118 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <map>
+#include <set>
 
 namespace fs = std::filesystem;
+
+// ------------------------------------------------------------- values ---
+
+// The selected button's values, gathered before drawing it: the first Set block of each
+// name fixes its kind (later ones follow it), and operands naming nothing get a warning.
+struct FirstSet {
+	const void *block; // only compared, never followed: "+ add block" may move blocks during the frame
+	VK kind;
+};
+static std::map<std::string, FirstSet> g_first_set;
+static std::set<std::string> g_value_names;
+
+static void gather_values(const Seq &s)
+{
+	for (auto &b : s) {
+		if (b.type == BT::SetValue && !b.name.empty()) g_first_set.emplace(b.name, FirstSet{&b, b.kind});
+		if ((b.type == BT::SetValue || b.type == BT::Operate) && !b.name.empty()) g_value_names.insert(b.name);
+		gather_values(b.body);
+		gather_values(b.else_body);
+	}
+}
+
+static const ImVec4 kWarn(1, 0.6f, 0.3f, 1);
+
+// A name, a number, "text", true or false (see evaluate()).
+static bool operand_field(const char *id, std::string &s, float w)
+{
+	bool changed = text_field(id, s, w);
+	if (ImGui::IsItemHovered()) ImGui::SetTooltip("a value's name, a number, \"text\", true or false");
+	return changed;
+}
+
+// Warns under a row of operands about names no block of this button sets.
+static void unknown_names(std::initializer_list<const std::string *> operands)
+{
+	for (auto *o : operands) {
+		std::string t = trim(*o);
+		if (t.empty() || is_literal(t) || g_value_names.count(t)) continue;
+		ImGui::SetCursorPosX(label_width());
+		ImGui::TextColored(kWarn, "No block sets '%s' (put text in \"quotes\")", t.c_str());
+	}
+}
+
+// left [op combo] right, on one row after the label.
+static void operand_row(std::string &left, int &op, const char *const ops[], int op_count, float combo_w,
+                        std::string *right, float w, bool &dirty)
+{
+	float gap = ImGui::GetStyle().ItemSpacing.x;
+	float field = std::max(px(80), (w - label_width() - combo_w - 2 * gap) / 2);
+	dirty |= operand_field("##left", left, field);
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(combo_w);
+	dirty |= ImGui::Combo("##op", &op, ops, op_count);
+	if (right) {
+		ImGui::SameLine();
+		dirty |= operand_field("##right", *right, field);
+	}
+	unknown_names({&left, right ? right : &left});
+}
+
+static void edit_set(Block &b, bool &dirty, float w)
+{
+	float fw = w - label_width();
+	row_label("Name");
+	dirty |= text_field("##n", b.name, fw);
+	auto first = g_first_set.find(b.name);
+	bool follows = first != g_first_set.end() && first->second.block != &b;
+	if (follows && b.kind != first->second.kind) {
+		b.kind = first->second.kind;
+		dirty = true;
+	}
+	row_label("Kind");
+	int k = (int)b.kind;
+	ImGui::BeginDisabled(follows);
+	ImGui::SetNextItemWidth(px(120));
+	if (ImGui::Combo("##k", &k, kKindLabels, kKindCount)) {
+		b.kind = (VK)k;
+		dirty = true;
+	}
+	ImGui::EndDisabled();
+	if (follows) {
+		ImGui::SameLine();
+		ImGui::TextDisabled("like the first Set value of '%s'", b.name.c_str());
+	}
+	row_label("Value");
+	if (b.kind == VK::Bool) {
+		dirty |= ImGui::Checkbox("##v", &b.flag);
+		ImGui::SameLine();
+		ImGui::TextUnformatted(b.flag ? "true" : "false");
+		return;
+	}
+	dirty |= text_field("##v", b.command, fw);
+	double d;
+	if (b.kind == VK::Number && !parse_number(b.command, d)) {
+		ImGui::SetCursorPosX(label_width());
+		ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "Not a number: running this block will fail");
+	}
+}
+
+static void edit_operate(Block &b, bool &dirty, float w)
+{
+	row_label("Result");
+	dirty |= text_field("##n", b.name, w - label_width());
+	row_label("=");
+	int op = (int)b.op;
+	operand_row(b.left, op, kOpLabels, kOpCount, px(190), b.op == Op::Not ? nullptr : &b.right, w, dirty);
+	b.op = (Op)op;
+}
 
 // ------------------------------------------------------- moving blocks ---
 
@@ -76,6 +186,18 @@ static void edit_condition(Condition &c, bool &dirty, float w)
 		row_label("Exit code"); ImGui::SetNextItemWidth(px(100)); dirty |= ImGui::InputInt("##cn", &c.number);
 		break;
 	case CT::UserSaysYes: row_label("Question"); dirty |= text_field("##ctx", c.text, fw); break;
+	case CT::Compare: {
+		row_label("Compare");
+		int cmp = (int)c.cmp;
+		operand_row(c.left, cmp, kCmpIds, kCmpCount, px(60), &c.right, w, dirty);
+		c.cmp = (Cmp)cmp;
+		break;
+	}
+	case CT::ValueTrue:
+		row_label("Value");
+		dirty |= operand_field("##cl", c.left, fw);
+		unknown_names({&c.left});
+		break;
 	}
 }
 
@@ -138,7 +260,7 @@ static void block_header(Seq &seq, const SeqPath &path, int i, const BlockInfo &
 	}
 	ImGui::SameLine();
 	ImGui::TextColored(ImVec4(1, 1, 1, 1), "%s", bi.label);
-	if (b.type == BT::Run && !b.name.empty()) {
+	if ((b.type == BT::Run || b.type == BT::SetValue || b.type == BT::Operate) && !b.name.empty()) {
 		ImGui::SameLine();
 		ImGui::TextDisabled("%s", b.name.c_str());
 	}
@@ -192,6 +314,8 @@ static void edit_block(Seq &seq, const SeqPath &path, int i, bool &dirty)
 		edit_condition(b.cond, dirty, w);
 		nested("do", b.body, path, i, false, dirty);
 		break;
+	case BT::SetValue: edit_set(b, dirty, w); break;
+	case BT::Operate: edit_operate(b, dirty, w); break;
 	case BT::KillProgram: row_label("Program"); dirty |= text_field("##n", b.name, fw); break;
 	case BT::KillMatching:
 		row_label("Patterns"); dirty |= text_field("##m", b.match, fw);
@@ -201,6 +325,8 @@ static void edit_block(Seq &seq, const SeqPath &path, int i, bool &dirty)
 	case BT::Message:
 		row_label("Text"); dirty |= text_field("##t", b.command, fw);
 		ImGui::SetCursorPosX(label_width());
+		ImGui::TextDisabled("{name} shows a value");
+		ImGui::SameLine();
 		dirty |= ImGui::Checkbox("show as popup", &b.popup);
 		break;
 	case BT::Stop: ImGui::TextDisabled("Ends the sequence here"); break;
@@ -644,6 +770,9 @@ void Editor::draw()
 			ImGui::EndChild();
 			ImGui::PopStyleVar();
 			ImGui::PopStyleColor();
+			g_first_set.clear();
+			g_value_names.clear();
+			gather_values(b.seq);
 			ImGui::PushID(selected);
 			SeqPath root;
 			root.button = selected;

@@ -31,6 +31,7 @@ struct Runner {
 	std::string ask_text;
 	std::string popup_text; // Show message (popup)
 	std::string error_text; // Throw error
+	Values values;          // set by the running sequence; emptied when it ends or another one starts
 
 	explicit Runner(const std::string &path);
 	void reload_if_changed(); // picks up edits saved by the editor (only when idle)
@@ -44,6 +45,8 @@ struct Runner {
 
 private:
 	void say(const std::string &msg); // sets status and appends to history
+	void fail(const std::string &msg); // ends the sequence as an error, like Throw error
+	bool value_of(const std::string &operand, Value &out); // false: failed
 	void set_doc(Document d);
 	const ProcessTable &processes(); // /proc scan, reused for a short while
 
