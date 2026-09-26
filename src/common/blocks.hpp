@@ -22,6 +22,7 @@ struct BlockInfo {
 	BT type;
 	const char *id;    // name in the JSON file
 	const char *label; // name in the editor
+	const char *family; // submenu of "+ add block"; kBlocks keeps each family together
 	Color color;
 };
 

@@ -38,6 +38,7 @@ FILE may be relative; `~`, `$VAR`, `${VAR}` expanded. The editor without FILE fi
 `color` floats 0–1 (alpha optional). Legacy `{"start":[...],"stop":[...]}` is read as two buttons.
 
 ### Blocks (`type` → fields, defaults)
+Editor "+ add block" menu has one submenu per family: Programs (run, kill*), Wait, Control flow (if, repeat*, stop), Values (set, operate), Messages & errors (message, throw).
 | type | fields |
 |---|---|
 | `run` | `name` (id used by other blocks), `command`, `shell` false (`sh -c` / `cmd /c`), `cwd` "", `env` "" (`K=V` per line), `match` "" (comma-separated substrings of a process command line: finds/kills it even if not started by autom8), `blocking` false, `min_seconds` 0, `max_seconds` -1, `skip_if_running` true |

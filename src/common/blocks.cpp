@@ -8,20 +8,20 @@
 namespace fs = std::filesystem;
 
 const BlockInfo kBlocks[] = {
-	{BT::Run, "run", "Run", {0.26f, 0.45f, 0.85f, 1}},
-	{BT::WaitSeconds, "wait", "Wait seconds", {0.85f, 0.62f, 0.15f, 1}},
-	{BT::WaitUntil, "wait_until", "Wait until", {0.85f, 0.62f, 0.15f, 1}},
-	{BT::If, "if", "If ... else", {0.85f, 0.45f, 0.15f, 1}},
-	{BT::RepeatN, "repeat", "Repeat N times", {0.85f, 0.45f, 0.15f, 1}},
-	{BT::RepeatUntil, "repeat_until", "Repeat until", {0.85f, 0.45f, 0.15f, 1}},
-	{BT::SetValue, "set", "Set value", {0.55f, 0.35f, 0.80f, 1}},
-	{BT::Operate, "operate", "Operate on values", {0.55f, 0.35f, 0.80f, 1}},
-	{BT::KillProgram, "kill", "Kill program", {0.80f, 0.25f, 0.30f, 1}},
-	{BT::KillMatching, "kill_matching", "Kill matching processes", {0.80f, 0.25f, 0.30f, 1}},
-	{BT::KillAll, "kill_all", "Kill all programs", {0.80f, 0.25f, 0.30f, 1}},
-	{BT::Message, "message", "Show message", {0.35f, 0.60f, 0.40f, 1}},
-	{BT::Stop, "stop", "Stop sequence", {0.45f, 0.45f, 0.45f, 1}},
-	{BT::Throw, "throw", "Throw error", {0.65f, 0.10f, 0.12f, 1}},
+	{BT::Run, "run", "Run", "Programs", {0.26f, 0.45f, 0.85f, 1}},
+	{BT::KillProgram, "kill", "Kill program", "Programs", {0.80f, 0.25f, 0.30f, 1}},
+	{BT::KillMatching, "kill_matching", "Kill matching processes", "Programs", {0.80f, 0.25f, 0.30f, 1}},
+	{BT::KillAll, "kill_all", "Kill all programs", "Programs", {0.80f, 0.25f, 0.30f, 1}},
+	{BT::WaitSeconds, "wait", "Wait seconds", "Wait", {0.85f, 0.62f, 0.15f, 1}},
+	{BT::WaitUntil, "wait_until", "Wait until", "Wait", {0.85f, 0.62f, 0.15f, 1}},
+	{BT::If, "if", "If ... else", "Control flow", {0.85f, 0.45f, 0.15f, 1}},
+	{BT::RepeatN, "repeat", "Repeat N times", "Control flow", {0.85f, 0.45f, 0.15f, 1}},
+	{BT::RepeatUntil, "repeat_until", "Repeat until", "Control flow", {0.85f, 0.45f, 0.15f, 1}},
+	{BT::Stop, "stop", "Stop sequence", "Control flow", {0.45f, 0.45f, 0.45f, 1}},
+	{BT::SetValue, "set", "Set value", "Values", {0.55f, 0.35f, 0.80f, 1}},
+	{BT::Operate, "operate", "Operate on values", "Values", {0.55f, 0.35f, 0.80f, 1}},
+	{BT::Message, "message", "Show message", "Messages & errors", {0.35f, 0.60f, 0.40f, 1}},
+	{BT::Throw, "throw", "Throw error", "Messages & errors", {0.65f, 0.10f, 0.12f, 1}},
 };
 const int kBlockCount = sizeof(kBlocks) / sizeof(kBlocks[0]);
 

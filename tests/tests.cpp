@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <thread>
 #include <algorithm>
 
@@ -72,6 +73,21 @@ static void test_util()
 	CHECK(with_json_extension("dir/setup.json") == "dir/setup.json");
 	CHECK(with_json_extension("dir/setup.txt") == "dir/setup.txt");
 	CHECK(with_json_extension("") == "");
+}
+
+static void test_block_table()
+{
+	// Every block type is listed once, and each family's blocks are together ("+ add block" submenus).
+	std::set<int> types;
+	std::set<std::string> families_done;
+	for (int i = 0; i < kBlockCount; i++) {
+		types.insert((int)kBlocks[i].type);
+		if (i > 0 && std::string(kBlocks[i].family) != kBlocks[i - 1].family) {
+			CHECK(!families_done.count(kBlocks[i].family));
+			families_done.insert(kBlocks[i - 1].family);
+		}
+	}
+	CHECK((int)types.size() == kBlockCount && kBlockCount == (int)BT::Throw + 1);
 }
 
 static void test_json_round_trip()
@@ -478,6 +494,7 @@ static void test_process()
 int main()
 {
 	test_util();
+	test_block_table();
 	test_json_round_trip();
 	test_config();
 	test_moves();

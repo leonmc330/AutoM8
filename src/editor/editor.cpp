@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -409,22 +410,38 @@ static void edit_block(Seq &seq, const SeqPath &path, int i, bool &dirty)
 	ImGui::PopID();
 }
 
+static void colored_bullet(Color c)
+{
+	ImGui::PushStyleColor(ImGuiCol_Text, to_imvec(c));
+	ImGui::Bullet();
+	ImGui::PopStyleColor();
+	ImGui::SameLine();
+}
+
 static void add_menu(Seq &seq, bool &dirty)
 {
 	if (!ImGui::BeginPopup("add")) return;
-	for (int i = 0; i < kBlockCount; i++) {
-		const BlockInfo &bi = kBlocks[i];
-		ImGui::PushStyleColor(ImGuiCol_Text, to_imvec(bi.color));
-		ImGui::Bullet();
-		ImGui::PopStyleColor();
-		ImGui::SameLine();
-		if (ImGui::Selectable(bi.label)) {
-			Block b;
-			b.type = bi.type;
-			if (b.type == BT::WaitUntil) b.seconds = -1;
-			seq.push_back(b);
-			dirty = true;
+	// One submenu per family (kBlocks keeps each family together), bullet in the family's first colour.
+	for (int f = 0; f < kBlockCount;) {
+		int end = f;
+		while (end < kBlockCount && !strcmp(kBlocks[end].family, kBlocks[f].family)) end++;
+		colored_bullet(kBlocks[f].color);
+		bool open = ImGui::BeginMenu(kBlocks[f].family);
+		int first = f;
+		f = end;
+		if (!open) continue;
+		for (int i = first; i < end; i++) {
+			const BlockInfo &bi = kBlocks[i];
+			colored_bullet(bi.color);
+			if (ImGui::MenuItem(bi.label)) {
+				Block b;
+				b.type = bi.type;
+				if (b.type == BT::WaitUntil) b.seconds = -1;
+				seq.push_back(b);
+				dirty = true;
+			}
 		}
+		ImGui::EndMenu();
 	}
 	ImGui::EndPopup();
 }

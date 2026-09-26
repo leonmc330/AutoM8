@@ -95,11 +95,11 @@ with `^` `v`, removed with `x`.
 <table>
 <tr>
 <td width="50%"><img src="docs/screenshots/editor-stop.png" alt="The Stop button: Kill program with a 3 s grace period, then Show message"></td>
-<td width="50%"><img src="docs/screenshots/editor-add-block.png" alt="The + add block menu listing the 12 block types"></td>
+<td width="50%"><img src="docs/screenshots/editor-add-block.png" alt="The + add block menu: Programs, Wait, Control flow, Values, Messages &amp; errors submenus, Control flow open"></td>
 </tr>
 <tr>
 <td><b>Stop</b>: ask the web server to quit, kill it if it's still there after 3 s, say so.</td>
-<td><b>+ add block</b>: the block types, colour-coded by family.</td>
+<td><b>+ add block</b>: one submenu per family (Programs, Wait, Control flow, Values, Messages &amp; errors), colour-coded.</td>
 </tr>
 </table>
 
