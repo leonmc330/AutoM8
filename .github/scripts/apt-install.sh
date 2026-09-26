@@ -4,7 +4,8 @@
 # runner image), which skips the slow `apt-get update`. On a miss, or if the image changed under
 # them, downloads them into DIR first.
 set -e
-dir=$1
+mkdir -p "$1"
+dir=$(cd "$1" && pwd) # absolute: apt reads a relative Dir::Cache::archives from /var/cache/apt
 shift
 sudo rm -f /var/lib/man-db/auto-update # no man page index rebuild after installing (seconds per job)
 
@@ -18,5 +19,8 @@ sudo apt-get update
 sudo apt-get install -y --no-install-recommends --download-only -o Dir::Cache::archives="$dir" "$@"
 sudo rm -rf "$dir/partial" "$dir/lock"
 sudo chown -R "$(id -u):$(id -g)" "$dir"
-ls "$dir"/*.deb >/dev/null 2>&1 || exit 0 # all already on the image
-sudo apt-get install -y --no-install-recommends "$dir"/*.deb
+if ls "$dir"/*.deb >/dev/null 2>&1; then
+	sudo apt-get install -y --no-install-recommends "$dir"/*.deb
+else # nothing was downloaded (all on the image already?): the plain way
+	sudo apt-get install -y --no-install-recommends "$@"
+fi
