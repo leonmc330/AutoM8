@@ -128,7 +128,7 @@ static json block_to_json(const Block &b)
 	case BT::Throw: j["text"] = b.command; break;
 	case BT::Thread:
 		j.update({{"count", b.count}, {"index", b.name}, {"blocking", b.blocking}, {"max_seconds", b.max_s},
-		          {"body", seq_to_json(b.body)}});
+		          {"kill_on_timeout", b.kill_on_timeout}, {"body", seq_to_json(b.body)}});
 		break;
 	case BT::Stop: break;
 	}
@@ -156,6 +156,7 @@ static Block block_from_json(const json &j)
 	b.stop_on_timeout = j.value("stop_on_timeout", false);
 	b.count = j.value("count", 3);
 	b.popup = j.value("popup", false);
+	b.kill_on_timeout = j.value("kill_on_timeout", false);
 	b.left = j.value("left", "");
 	b.right = j.value("right", "");
 	b.op = enum_from(j, "op", kOpIds, kOpCount, Op::Add);

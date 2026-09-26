@@ -60,7 +60,9 @@ struct Block {
 	bool stop_on_timeout = false;
 	bool popup = false;   // Show message
 	// Thread: `count` copies of `body` side by side, `name` = the index value (1..count in each),
-	// `blocking` = wait for them all, `max_s` = kill a thread after this long (-1 = no limit)
+	// `blocking` = wait for them all, `max_s` = kill a thread after this long (-1 = no limit),
+	// and its programs too with `kill_on_timeout`
+	bool kill_on_timeout = false;
 	// Set value (`name` = the value, `command` = number / text as typed, `flag` = yes/no)
 	VK kind = VK::Number;
 	bool flag = false;

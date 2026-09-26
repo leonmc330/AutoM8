@@ -393,6 +393,12 @@ static void edit_block(Seq &seq, const SeqPath &path, int i, bool &dirty)
 		ImGui::TextDisabled(b.blocking ? "(waits for every thread to end)" : "(the sequence goes on while they run)");
 		row_label("Max s"); ImGui::SetNextItemWidth(px(90)); dirty |= ImGui::InputFloat("##max", &b.max_s, 0, 0, "%.1f");
 		ImGui::SameLine(); ImGui::TextDisabled("a thread running longer is killed; -1 = no limit");
+		if (b.max_s >= 0) {
+			ImGui::SetCursorPosX(label_width());
+			dirty |= ImGui::Checkbox("kill its programs on timeout", &b.kill_on_timeout);
+			ImGui::SameLine();
+			ImGui::TextDisabled(b.kill_on_timeout ? "(the programs its Run blocks started)" : "(they keep running)");
+		}
 		nested("each thread does", b.body, path, i, false, dirty);
 		break;
 	case BT::SetValue: edit_set(b, dirty, w); break;

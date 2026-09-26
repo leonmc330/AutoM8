@@ -47,7 +47,7 @@ Editor "+ add block" menu has one submenu per family: Programs (run, kill*), Wai
 | `if` | `condition`, `then` [..], `else` [..] |
 | `repeat` | `count` 3 (-1 forever), `body` [..] |
 | `repeat_until` | `condition`, `body` [..] — condition checked first; body runs while false |
-| `thread` | `count` 3 (threads, max 256), `index` "" (value name, editor default `t_index`), `blocking` false (editor default true), `max_seconds` -1, `body` [..] |
+| `thread` | `count` 3 (threads, max 256), `index` "" (value name, editor default `t_index`), `blocking` false (editor default true), `max_seconds` -1, `kill_on_timeout` false, `body` [..] |
 | `set` | `name`, `kind` "number"\|"text"\|"bool" (missing: from the JSON type of `value`), `value` (number / string / bool; a number-kind string that doesn't parse fails when run) |
 | `operate` | `name` (result), `left`, `op` `+ - * / and or xor not`, `right` (unused by `not`) — operands, see Values |
 | `kill` | `name` (run block name; also kills processes matching its `match`), `graceful_seconds` 0 |
@@ -62,7 +62,7 @@ Semantics:
 - `skip_if_running` → does not start a second copy.
 - Kill with `graceful_seconds` 0 = hard kill now. >0 = ask to quit (Linux SIGTERM to process group; Windows close its windows), hard kill after N s if still running. Linux kills process group; Windows kills job (all children).
 
-- `thread`: runs `count` copies of `body` concurrently (cooperative, in the runner's update loop; each thread advances in turn, a block is never interrupted). Each thread has its own `index` value = 1..count (number; nested threads also keep outer indexes; absent outside). All other values are shared read/write with the sequence and other threads. `blocking` → next block when every thread of this block ended; else next block now, and the button is done only when the sequence and all threads ended. `max_seconds` ≥ 0 → a thread (and threads it started) is killed after that long ("Thread #2: killed after N s"); its programs keep running.
+- `thread`: runs `count` copies of `body` concurrently (cooperative, in the runner's update loop; each thread advances in turn, a block is never interrupted). Each thread has its own `index` value = 1..count (number; nested threads also keep outer indexes; absent outside). All other values are shared read/write with the sequence and other threads. `blocking` → next block when every thread of this block ended; else next block now, and the button is done only when the sequence and all threads ended. `max_seconds` ≥ 0 → a thread (and threads it started) is killed after that long ("Thread #2: killed after N s"); its programs keep running, unless `kill_on_timeout` (then its program copies, and those of threads it started, are hard-killed).
 - In a thread, `run` blocks inside the thread block start a per-thread copy `NAME #k` (nested `NAME #k.j`); conditions/`kill` in the thread resolve NAME to that copy. Elsewhere NAME covers all copies (`program_running` any, `kill` all). `skip_if_running` of a copy checks only that copy (not `match`). `stop` / `wait_until` stop_on_timeout end only the thread; `throw` / runtime errors end the whole sequence. `user_says_yes` questions are asked one at a time. Example: `examples/threads.json`.
 
 ### Condition object

@@ -387,6 +387,7 @@ void Runner::start_threads(Block &b)
 		if (!index.empty()) t->locals[index] = (double)k;
 		t->born = Clock::now();
 		t->max_s = b.max_s;
+		t->kill_programs = b.kill_on_timeout;
 		t->stack = {{&b.body, 0}};
 		t->cond_proc.name = "(condition)";
 		threads_.push_back(std::move(t)); // cur_ stays valid: threads are owned by unique_ptr
@@ -573,9 +574,18 @@ void Runner::update()
 			end_tree(ids, parents, t.id);
 			char secs[32];
 			snprintf(secs, sizeof secs, "%g", t.max_s);
-			end_thread(t, std::string("killed after ") + secs + " s");
-			for (auto &o : threads_)
-				if (std::count(ids.begin(), ids.end(), o->id)) end_thread(*o, "");
+			bool kill_programs = t.kill_programs;
+			end_thread(t, std::string("killed after ") + secs + " s" + (kill_programs ? ", with its programs" : ""));
+			for (auto &o : threads_) {
+				if (!std::count(ids.begin(), ids.end(), o->id)) continue;
+				end_thread(*o, "");
+				if (!kill_programs) continue;
+				for (auto &name : o->own) { // its copies ("worker #2"), and those of the threads it started
+					auto p = procs.find(name + " " + o->label);
+					if (p != procs.end() && p->second.running()) p->second.kill_now();
+				}
+			}
+			table_valid_ = false;
 			continue;
 		}
 		advance(t);

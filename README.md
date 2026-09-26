@@ -316,7 +316,8 @@ means 5 copies of those blocks running side by side, each at its own pace.
   sequence *and* all its threads have ended.
 - **Max s**: a thread still running after this many seconds is killed (with the threads it
   started itself), and the status line says so. `-1` = no limit. Programs it started keep running,
-  like after a blocking **Run**'s max time.
+  like after a blocking **Run**'s max time, unless **kill its programs on timeout** is checked:
+  then they are killed with it.
 
 ```mermaid
 sequenceDiagram

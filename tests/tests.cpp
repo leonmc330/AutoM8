@@ -603,6 +603,42 @@ static void test_process()
 	CHECK(!findable.running());
 }
 
+// A thread killed after its max time takes its programs with it when asked to.
+static void test_thread_timeout_kills()
+{
+	Block prog;
+	prog.type = BT::Run;
+	prog.name = "sleeper";
+	prog.command = kLongRunning;
+	prog.shell = true;
+	Block wait_long;
+	wait_long.type = BT::WaitSeconds;
+	wait_long.seconds = 30;
+	Block killing = thread_block(2, true, {prog, wait_long});
+	killing.max_s = 0.3f;
+	killing.kill_on_timeout = true;
+	Block keeping = killing;
+	keeping.kill_on_timeout = false;
+
+	Document d;
+	d.buttons.push_back({"kill", {0, 0, 0, 1}, {killing}});
+	d.buttons.push_back({"keep", {0, 0, 0, 1}, {keeping}});
+	std::string path = path_string(fs::temp_directory_path() / "autom8-thread-kill-test.json");
+	CHECK(save_document(path, d));
+	Document back;
+	CHECK(load_document(path, back) && back.buttons[0].seq[0].kill_on_timeout && !back.buttons[1].seq[0].kill_on_timeout);
+
+	Runner r(path);
+	run_button_timed(r, "kill");
+	CHECK(!r.active && r.procs.count("sleeper #1") && r.procs.count("sleeper #2"));
+	CHECK(!r.program_running("sleeper"));
+	run_button_timed(r, "keep");
+	CHECK(!r.active && r.procs["sleeper #1"].running() && r.procs["sleeper #2"].running());
+	r.kill_program("sleeper");
+	CHECK(!r.procs["sleeper #1"].running() && !r.procs["sleeper #2"].running());
+	fs::remove(path_of(path));
+}
+
 int main()
 {
 	test_util();
@@ -615,6 +651,7 @@ int main()
 	test_threads();
 	test_regex();
 	test_process();
+	test_thread_timeout_kills();
 	printf("%d passed, %d failed\n", g_passed, g_failed);
 	return g_failed ? 1 : 0;
 }

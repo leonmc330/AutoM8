@@ -73,6 +73,7 @@ private:
 		Values locals;                    // index values: each thread sees its own number
 		Clock::time_point born;
 		float max_s = -1;                 // killed after this long (-1 = no limit)
+		bool kill_programs = false;       // ... and its programs with it
 		bool done = false;
 		std::vector<Frame> stack;
 		bool started = false;             // current block already started
