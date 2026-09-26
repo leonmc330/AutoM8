@@ -80,7 +80,7 @@ Per press of a button: empty at press, dropped when the sequence ends, invisible
 - `+ - * /` numbers (`/0` error); `+` with any text side joins as text (`"n = "+3` → `n = 3`); `and or xor` two bools; `not` one bool. Other mixes → error.
 - Compare: same kind; numbers/texts all six ops (texts byte order), bools `== !=`; different kinds: `==` false, `!=` true, ordering → error.
 - Any runtime value error ends the sequence as an error (like `throw`: popup / exit 1).
-- Editor: first `set` of a name fixes its kind, later `set`s follow it; red note on a non-number; warning on operand names no `set`/`operate` of the button defines. Example: `examples/values.json`.
+- Editor: first `set` of a name fixes its kind, later `set`s follow it; red note on a non-number; warning on operand names no `set`/`operate` of the button defines. Operand kinds are inferred (literal, first `set` of the name, or earlier `operate` result: + of a text → text, + of numbers / - * / → number, logic → bool); the operator lists offer only ops valid for them (unknown kind = anything) and a saved invalid op is shown red. Example: `examples/values.json`.
 
 ## Example (examples/web-server.json, Linux)
 ```json

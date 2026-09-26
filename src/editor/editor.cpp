@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <set>
 
@@ -27,11 +28,26 @@ struct FirstSet {
 };
 static std::map<std::string, FirstSet> g_first_set;
 static std::set<std::string> g_value_names;
+static std::map<std::string, VK> g_value_kinds; // from the first block that sets each name, when it can tell
+
+static MaybeKind kind_of_operand(const std::string &operand)
+{
+	if (MaybeKind k = literal_kind(operand)) return k;
+	auto it = g_value_kinds.find(trim(operand));
+	if (it == g_value_kinds.end()) return std::nullopt;
+	return it->second;
+}
 
 static void gather_values(const Seq &s)
 {
 	for (auto &b : s) {
-		if (b.type == BT::SetValue && !b.name.empty()) g_first_set.emplace(b.name, FirstSet{&b, b.kind});
+		if (b.type == BT::SetValue && !b.name.empty()) {
+			g_first_set.emplace(b.name, FirstSet{&b, b.kind});
+			g_value_kinds.emplace(b.name, b.kind);
+		}
+		if (b.type == BT::Operate && !b.name.empty())
+			if (MaybeKind k = op_result(b.op, kind_of_operand(b.left), kind_of_operand(b.right)))
+				g_value_kinds.emplace(b.name, *k);
 		if ((b.type == BT::SetValue || b.type == BT::Operate) && !b.name.empty()) g_value_names.insert(b.name);
 		gather_values(b.body);
 		gather_values(b.else_body);
@@ -59,20 +75,52 @@ static void unknown_names(std::initializer_list<const std::string *> operands)
 	}
 }
 
-// left [op combo] right, on one row after the label.
-static void operand_row(std::string &left, int &op, const char *const ops[], int op_count, float combo_w,
-                        std::string *right, float w, bool &dirty)
+static const char *kind_word(MaybeKind k) { return k ? kKindLabels[(int)*k] : "?"; }
+
+// Operators for Operate / compare: only the ones that work on the operands' kinds are offered.
+struct OpChoices {
+	int count;
+	const char *const *ids; // short names, for messages
+	std::function<const char *(int)> label;
+	std::function<bool(int)> allowed;
+};
+
+// left [operator] right on one row after the label (`right` is null for "not"), then what
+// the editor knows of their kinds: "number and number", "text and ?"...
+static void operand_row(std::string &left, int &op, const OpChoices &ops, float combo_w, std::string *right,
+                        MaybeKind l, MaybeKind r, float w, bool &dirty)
 {
+	const ImVec4 red(1, 0.4f, 0.4f, 1);
 	float gap = ImGui::GetStyle().ItemSpacing.x;
 	float field = std::max(px(80), (w - label_width() - combo_w - 2 * gap) / 2);
 	dirty |= operand_field("##left", left, field);
 	ImGui::SameLine();
 	ImGui::SetNextItemWidth(combo_w);
-	dirty |= ImGui::Combo("##op", &op, ops, op_count);
+	bool ok = ops.allowed(op);
+	if (!ok) ImGui::PushStyleColor(ImGuiCol_Text, red);
+	bool open = ImGui::BeginCombo("##op", ops.label(op));
+	if (!ok) ImGui::PopStyleColor();
+	if (open) {
+		bool any = false;
+		for (int i = 0; i < ops.count; i++) {
+			if (!ops.allowed(i)) continue;
+			any = true;
+			if (ImGui::Selectable(ops.label(i), i == op)) {
+				dirty |= i != op;
+				op = i;
+			}
+		}
+		if (!any) ImGui::TextDisabled("nothing works on %s and %s", kind_word(l), kind_word(r));
+		ImGui::EndCombo();
+	}
 	if (right) {
 		ImGui::SameLine();
 		dirty |= operand_field("##right", *right, field);
 	}
+	ImGui::SetCursorPosX(label_width());
+	std::string kinds = right ? std::string(kind_word(l)) + " and " + kind_word(r) : kind_word(l);
+	if (ok) ImGui::TextDisabled("%s", kinds.c_str());
+	else ImGui::TextColored(red, "'%s' doesn't work on %s: running this block will fail", ops.ids[op], kinds.c_str());
 	unknown_names({&left, right ? right : &left});
 }
 
@@ -120,8 +168,16 @@ static void edit_operate(Block &b, bool &dirty, float w)
 	row_label("Result");
 	dirty |= text_field("##n", b.name, w - label_width());
 	row_label("=");
+	MaybeKind l = kind_of_operand(b.left), r = kind_of_operand(b.right);
+	OpChoices ops = {kOpCount, kOpIds,
+	                 [&](int i) {
+		                 if ((Op)i != Op::Add) return kOpLabels[i];
+		                 if (l == VK::Text || r == VK::Text) return "+  join texts";
+		                 return l && r ? "+  add" : kOpLabels[i];
+	                 },
+	                 [&](int i) { return op_allowed((Op)i, l, (Op)i == Op::Not ? std::nullopt : r); }};
 	int op = (int)b.op;
-	operand_row(b.left, op, kOpLabels, kOpCount, px(190), b.op == Op::Not ? nullptr : &b.right, w, dirty);
+	operand_row(b.left, op, ops, px(190), b.op == Op::Not ? nullptr : &b.right, l, r, w, dirty);
 	b.op = (Op)op;
 }
 
@@ -188,8 +244,11 @@ static void edit_condition(Condition &c, bool &dirty, float w)
 	case CT::UserSaysYes: row_label("Question"); dirty |= text_field("##ctx", c.text, fw); break;
 	case CT::Compare: {
 		row_label("Compare");
+		MaybeKind l = kind_of_operand(c.left), r = kind_of_operand(c.right);
+		OpChoices ops = {kCmpCount, kCmpIds, [](int i) { return kCmpIds[i]; },
+		                 [&](int i) { return cmp_allowed((Cmp)i, l, r); }};
 		int cmp = (int)c.cmp;
-		operand_row(c.left, cmp, kCmpIds, kCmpCount, px(60), &c.right, w, dirty);
+		operand_row(c.left, cmp, ops, px(60), &c.right, l, r, w, dirty);
 		c.cmp = (Cmp)cmp;
 		break;
 	}
@@ -772,6 +831,7 @@ void Editor::draw()
 			ImGui::PopStyleColor();
 			g_first_set.clear();
 			g_value_names.clear();
+			g_value_kinds.clear();
 			gather_values(b.seq);
 			ImGui::PushID(selected);
 			SeqPath root;

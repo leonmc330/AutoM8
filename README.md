@@ -273,6 +273,11 @@ the *compare values* and *value is true* conditions test them in **If**, **Wait 
 - In **Operate** and **compare** fields you write, like in Python: a value's name (`count`),
   a number (`1`, `2.5`), a text in quotes (`"hello "` or `'hello '`) or `true` / `false`.
   The editor warns about names no block of the button sets.
+- **Only the operators that fit are offered.** The editor knows each operand's kind (from what
+  you typed, the first **Set value** of that name, or the **Operate** that computed it) and shows
+  it under the fields: two numbers get `+ - * /`, texts get *join texts*, yes/no get `and or xor not`,
+  and a compare of yes/no only `==` `!=`. An operator that doesn't fit (say a `-` left over after
+  changing an operand) is shown in red, since running it would fail.
 
 | Operation | On | Gives |
 |---|---|---|

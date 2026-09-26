@@ -241,6 +241,21 @@ static void test_values()
 	CHECK(cmp(Cmp::Lt, 1.0, std::string("1")) == -1 && cmp(Cmp::Lt, true, false) == -1);
 
 	CHECK(substitute("n={n}, {s}! {none} {yes}{", vals) == "n=3, hi! {none} true{");
+
+	// The editor offers only the operators that work on what it knows of the operands.
+	CHECK(literal_kind("2") == VK::Number && literal_kind("'a'") == VK::Text && literal_kind("true") == VK::Bool);
+	CHECK(!literal_kind("name") && !literal_kind(""));
+	MaybeKind num = VK::Number, text = VK::Text, yn = VK::Bool, unknown;
+	CHECK(op_allowed(Op::Add, num, num) && op_allowed(Op::Mul, num, num) && !op_allowed(Op::And, num, num));
+	CHECK(op_allowed(Op::Add, text, text) && op_allowed(Op::Add, text, num) && !op_allowed(Op::Sub, text, text));
+	CHECK(!op_allowed(Op::And, text, text) && !op_allowed(Op::Not, text, unknown));
+	CHECK(op_allowed(Op::Xor, yn, yn) && op_allowed(Op::Not, yn, unknown) && !op_allowed(Op::Add, yn, yn));
+	CHECK(!op_allowed(Op::Add, num, yn) && op_allowed(Op::Add, unknown, yn) && op_allowed(Op::Div, unknown, unknown));
+	CHECK(op_result(Op::Add, text, num) == VK::Text && op_result(Op::Add, num, num) == VK::Number);
+	CHECK(!op_result(Op::Add, num, unknown) && op_result(Op::Or, unknown, unknown) == VK::Bool);
+	CHECK(cmp_allowed(Cmp::Lt, num, num) && cmp_allowed(Cmp::Lt, text, text) && !cmp_allowed(Cmp::Lt, yn, yn));
+	CHECK(cmp_allowed(Cmp::Eq, yn, yn) && !cmp_allowed(Cmp::Gt, num, text) && cmp_allowed(Cmp::Ne, num, text));
+	CHECK(cmp_allowed(Cmp::Ge, unknown, num) && !cmp_allowed(Cmp::Ge, unknown, yn));
 	CHECK(substitute("{n}", {}) == "{n}");
 }
 

@@ -163,6 +163,54 @@ bool compare(Cmp cmp, const Value &a, const Value &b, bool &out, std::string &er
 	return true;
 }
 
+MaybeKind literal_kind(const std::string &operand)
+{
+	Value v;
+	std::string err;
+	if (!is_literal(operand) || !evaluate(operand, {}, v, err)) return std::nullopt;
+	return kind_of(v);
+}
+
+static bool may_be(MaybeKind k, VK want) { return !k || *k == want; }
+
+bool op_allowed(Op op, MaybeKind l, MaybeKind r)
+{
+	switch (op) {
+	case Op::Add: // numbers, or a text and anything
+		if (!l || !r) return true;
+		return *l == VK::Text || *r == VK::Text || (*l == VK::Number && *r == VK::Number);
+	case Op::Sub:
+	case Op::Mul:
+	case Op::Div: return may_be(l, VK::Number) && may_be(r, VK::Number);
+	case Op::And:
+	case Op::Or:
+	case Op::Xor: return may_be(l, VK::Bool) && may_be(r, VK::Bool);
+	case Op::Not: return may_be(l, VK::Bool);
+	}
+	return false;
+}
+
+MaybeKind op_result(Op op, MaybeKind l, MaybeKind r)
+{
+	switch (op) {
+	case Op::Add:
+		if (l == VK::Text || r == VK::Text) return VK::Text;
+		if (l == VK::Number && r == VK::Number) return VK::Number;
+		return std::nullopt;
+	case Op::Sub:
+	case Op::Mul:
+	case Op::Div: return VK::Number;
+	default: return VK::Bool;
+	}
+}
+
+bool cmp_allowed(Cmp cmp, MaybeKind l, MaybeKind r)
+{
+	if (cmp == Cmp::Eq || cmp == Cmp::Ne) return true;
+	if (l == VK::Bool || r == VK::Bool) return false;
+	return !l || !r || *l == *r;
+}
+
 std::string substitute(const std::string &text, const Values &vals)
 {
 	if (vals.empty()) return text;

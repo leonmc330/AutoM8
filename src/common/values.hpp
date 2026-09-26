@@ -3,6 +3,7 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include <string>
 #include <variant>
 
@@ -41,6 +42,14 @@ bool operate(Op op, const Value &a, const Value &b, Value &out, std::string &err
 // Numbers and texts compare with all six; yes/no only with == and !=;
 // different kinds are never equal and can't be ordered.
 bool compare(Cmp cmp, const Value &a, const Value &b, bool &out, std::string &error);
+
+// What the editor can tell before running: a kind, or nullopt when it can't know it (a name nothing
+// sets, an empty field). An unknown kind allows anything.
+using MaybeKind = std::optional<VK>;
+MaybeKind literal_kind(const std::string &operand); // nullopt: not a literal
+bool op_allowed(Op op, MaybeKind left, MaybeKind right); // "not" ignores `right`
+MaybeKind op_result(Op op, MaybeKind left, MaybeKind right);
+bool cmp_allowed(Cmp cmp, MaybeKind left, MaybeKind right);
 
 // "Count: {n}" -> "Count: 3" for every {name} that is a value; other braces are kept.
 std::string substitute(const std::string &text, const Values &vals);
