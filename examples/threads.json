@@ -1,0 +1,43 @@
+{
+  "version": 3,
+  "buttons": [
+    {
+      "name": "Blocking",
+      "color": [0.15, 0.6, 0.62, 1],
+      "sequence": [
+        {"type": "set", "name": "total", "kind": "number", "value": 0},
+        {"type": "thread", "count": 5, "index": "t_index", "blocking": true, "max_seconds": -1, "body": [
+          {"type": "wait", "seconds": 0.5},
+          {"type": "operate", "name": "total", "left": "total", "op": "+", "right": "t_index"},
+          {"type": "message", "text": "thread {t_index} added itself: total = {total}"}
+        ]},
+        {"type": "message", "text": "Every thread is done, total = {total}", "popup": true}
+      ]
+    },
+    {
+      "name": "Not blocking",
+      "color": [0.2, 0.55, 0.25, 1],
+      "sequence": [
+        {"type": "thread", "count": 3, "index": "t_index", "blocking": false, "max_seconds": -1, "body": [
+          {"type": "repeat", "count": 3, "body": [
+            {"type": "wait", "seconds": 1},
+            {"type": "message", "text": "thread {t_index}: tick"}
+          ]}
+        ]},
+        {"type": "message", "text": "The threads run on their own, the sequence goes on"}
+      ]
+    },
+    {
+      "name": "Max time",
+      "color": [0.85, 0.45, 0.15, 1],
+      "sequence": [
+        {"type": "thread", "count": 2, "index": "t_index", "blocking": true, "max_seconds": 2, "body": [
+          {"type": "message", "text": "thread {t_index} waits 5 s, but may only run 2 s"},
+          {"type": "wait", "seconds": 5},
+          {"type": "message", "text": "never shown"}
+        ]},
+        {"type": "message", "text": "Both threads were killed after 2 s", "popup": true}
+      ]
+    }
+  ]
+}

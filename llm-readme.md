@@ -34,11 +34,11 @@ FILE may be relative; `~`, `$VAR`, `${VAR}` expanded. The editor without FILE fi
   {"name": "Start", "color": [r,g,b,a], "sequence": [BLOCK, ...]}
 ]}
 ```
-`version`: format version (missing = 1). Programs read versions kMinDocumentVersion..kDocumentVersion (`src/common/blocks.hpp`, now 1..2; 2 added values) and refuse others (runner: exit 1 / error; editor: opens Untitled instead, never saves over it).
+`version`: format version (missing = 1). Programs read versions kMinDocumentVersion..kDocumentVersion (`src/common/blocks.hpp`, now 1..3; 2 added values, 3 thread) and refuse others (runner: exit 1 / error; editor: opens Untitled instead, never saves over it).
 `color` floats 0–1 (alpha optional). Legacy `{"start":[...],"stop":[...]}` is read as two buttons.
 
 ### Blocks (`type` → fields, defaults)
-Editor "+ add block" menu has one submenu per family: Programs (run, kill*), Wait, Control flow (if, repeat*, stop), Values (set, operate), Messages & errors (message, throw).
+Editor "+ add block" menu has one submenu per family: Programs (run, kill*), Wait, Control flow (if, repeat*, thread, stop), Values (set, operate), Messages & errors (message, throw).
 | type | fields |
 |---|---|
 | `run` | `name` (id used by other blocks), `command`, `shell` false (`sh -c` / `cmd /c`), `cwd` "", `env` "" (`K=V` per line), `match` "" (comma-separated substrings of a process command line: finds/kills it even if not started by autom8), `blocking` false, `min_seconds` 0, `max_seconds` -1, `skip_if_running` true |
@@ -47,6 +47,7 @@ Editor "+ add block" menu has one submenu per family: Programs (run, kill*), Wai
 | `if` | `condition`, `then` [..], `else` [..] |
 | `repeat` | `count` 3 (-1 forever), `body` [..] |
 | `repeat_until` | `condition`, `body` [..] — condition checked first; body runs while false |
+| `thread` | `count` 3 (threads, max 256), `index` "" (value name, editor default `t_index`), `blocking` false (editor default true), `max_seconds` -1, `body` [..] |
 | `set` | `name`, `kind` "number"\|"text"\|"bool" (missing: from the JSON type of `value`), `value` (number / string / bool; a number-kind string that doesn't parse fails when run) |
 | `operate` | `name` (result), `left`, `op` `+ - * / and or xor not`, `right` (unused by `not`) — operands, see Values |
 | `kill` | `name` (run block name; also kills processes matching its `match`), `graceful_seconds` 0 |
@@ -60,6 +61,9 @@ Semantics:
 - `run` non-blocking → next block immediately. Blocking → next when (exited AND ≥ min_seconds) OR ≥ max_seconds (program keeps running).
 - `skip_if_running` → does not start a second copy.
 - Kill with `graceful_seconds` 0 = hard kill now. >0 = ask to quit (Linux SIGTERM to process group; Windows close its windows), hard kill after N s if still running. Linux kills process group; Windows kills job (all children).
+
+- `thread`: runs `count` copies of `body` concurrently (cooperative, in the runner's update loop; each thread advances in turn, a block is never interrupted). Each thread has its own `index` value = 1..count (number; nested threads also keep outer indexes; absent outside). All other values are shared read/write with the sequence and other threads. `blocking` → next block when every thread of this block ended; else next block now, and the button is done only when the sequence and all threads ended. `max_seconds` ≥ 0 → a thread (and threads it started) is killed after that long ("Thread #2: killed after N s"); its programs keep running.
+- In a thread, `run` blocks inside the thread block start a per-thread copy `NAME #k` (nested `NAME #k.j`); conditions/`kill` in the thread resolve NAME to that copy. Elsewhere NAME covers all copies (`program_running` any, `kill` all). `skip_if_running` of a copy checks only that copy (not `match`). `stop` / `wait_until` stop_on_timeout end only the thread; `throw` / runtime errors end the whole sequence. `user_says_yes` questions are asked one at a time. Example: `examples/threads.json`.
 
 ### Condition object
 `{"type": T, "not": false, "program": "", "text": "", "number": 0}`

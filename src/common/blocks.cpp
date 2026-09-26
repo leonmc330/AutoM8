@@ -17,6 +17,7 @@ const BlockInfo kBlocks[] = {
 	{BT::If, "if", "If ... else", "Control flow", {0.85f, 0.45f, 0.15f, 1}},
 	{BT::RepeatN, "repeat", "Repeat N times", "Control flow", {0.85f, 0.45f, 0.15f, 1}},
 	{BT::RepeatUntil, "repeat_until", "Repeat until", "Control flow", {0.85f, 0.45f, 0.15f, 1}},
+	{BT::Thread, "thread", "Threads", "Control flow", {0.15f, 0.60f, 0.62f, 1}},
 	{BT::Stop, "stop", "Stop sequence", "Control flow", {0.45f, 0.45f, 0.45f, 1}},
 	{BT::SetValue, "set", "Set value", "Values", {0.55f, 0.35f, 0.80f, 1}},
 	{BT::Operate, "operate", "Operate on values", "Values", {0.55f, 0.35f, 0.80f, 1}},
@@ -125,6 +126,10 @@ static json block_to_json(const Block &b)
 	case BT::KillAll: j["graceful_seconds"] = b.graceful_s; break;
 	case BT::Message: j.update({{"text", b.command}, {"popup", b.popup}}); break;
 	case BT::Throw: j["text"] = b.command; break;
+	case BT::Thread:
+		j.update({{"count", b.count}, {"index", b.name}, {"blocking", b.blocking}, {"max_seconds", b.max_s},
+		          {"body", seq_to_json(b.body)}});
+		break;
 	case BT::Stop: break;
 	}
 	return j;
@@ -154,6 +159,7 @@ static Block block_from_json(const json &j)
 	b.left = j.value("left", "");
 	b.right = j.value("right", "");
 	b.op = enum_from(j, "op", kOpIds, kOpCount, Op::Add);
+	if (b.type == BT::Thread) b.name = j.value("index", "");
 	if (b.type == BT::SetValue) {
 		const json &v = j.contains("value") ? j["value"] : json();
 		b.kind = v.is_boolean() ? VK::Bool : v.is_string() ? VK::Text : VK::Number; // no "kind": from the value

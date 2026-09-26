@@ -30,7 +30,7 @@ hand in five terminals.
 
 - [How it fits together](#how-it-fits-together)
 - [A tour](#a-tour)
-- [Blocks](#blocks) · [Conditions](#conditions) · [Values](#values)
+- [Blocks](#blocks) · [Conditions](#conditions) · [Values](#values) · [Threads](#threads)
 - [Download](#download)
 - [Use](#use) · [From the terminal](#from-the-terminal-no-window) · [Where the file is](#where-the-sequence-file-is)
 - [Build](#build)
@@ -194,6 +194,7 @@ Pressing a button while another sequence runs cancels that sequence and starts t
 | 🟧 | **If ... else** | Runs one of two block lists depending on a condition |
 | 🟧 | **Repeat N times** | Loops (`-1` = forever) |
 | 🟧 | **Repeat until** | Checks the condition, runs the body if it's false, again and again |
+| 🧵 | **Threads** | Runs its blocks N times side by side, each copy with its own index value (`1`, `2`, ...), blocking or not, with an optional max time. See [Threads](#threads) |
 | 🟪 | **Set value** | Gives a [value](#values) a number, a text or a yes/no |
 | 🟪 | **Operate on values** | *result* = *left* `+` `-` `*` `/` `and` `or` `xor` `not` *right* (`+` also joins texts) |
 | 🟥 | **Kill program** | Kills a program by its Run block name (and processes matching that block's **Match**) |
@@ -293,6 +294,59 @@ Different kinds are never equal (`1 == "1"` is false) and can't be ordered.
 (`Count: {i}` → `Count: 3`). A mistake while running (a name nothing set, `"a" - 1`...) stops
 the sequence as an error, like **Throw error**. [`examples/values.json`](examples/values.json)
 counts to 5 and combines two questions with `xor`.
+
+## Threads
+
+A **Threads** block runs the blocks inside it several times **at the same time**: 5 threads
+means 5 copies of those blocks running side by side, each at its own pace.
+
+<p align="center"><img src="docs/screenshots/editor-threads.png" alt="The editor: Set value total to 0, then a Threads block x5 whose threads wait, add t_index to total and show a message" width="820"></p>
+
+- **Threads**: how many copies to run (up to 256).
+- **Index value**: the name of a value each thread gets for itself, `t_index` by default:
+  it is `1` in the first thread, `2` in the second, and so on. Use it like any other value
+  (`{t_index}` in a message, `t_index` in **Operate** or **compare**). Outside the threads
+  it doesn't exist; a thread inside a thread still sees the outer thread's index.
+- **Every other value is shared**: threads read and write the same values as the rest of
+  the sequence, so they can hand results back (`total = total + t_index` in each of 5 threads
+  gives `15`) or signal the main sequence (set `ready` to `true`, and a **Wait until** *ready is
+  true* elsewhere sees it).
+- **blocking**: the sequence waits until every thread has ended, then goes on. Not blocking:
+  the sequence goes on right away while the threads run; the button is only done when the
+  sequence *and* all its threads have ended.
+- **Max s**: a thread still running after this many seconds is killed (with the threads it
+  started itself), and the status line says so. `-1` = no limit. Programs it started keep running,
+  like after a blocking **Run**'s max time.
+
+```mermaid
+sequenceDiagram
+    participant S as Sequence
+    participant T1 as Thread 1 (t_index = 1)
+    participant T2 as Thread 2 (t_index = 2)
+    S->>T1: start
+    S->>T2: start
+    Note over S: not blocking: goes on now
+    T1->>S: total = total + 1
+    T2->>S: total = total + 2
+    T1-->>S: ended
+    T2-->>S: ended
+    Note over S: blocking: goes on here
+```
+
+Inside a thread:
+
+- **Run** blocks start one copy per thread, named after the thread: the Run block `worker`
+  runs as `worker #1`, `worker #2`... (`worker #2.1` for a thread inside a thread). Conditions
+  and **Kill program** inside the thread use the thread's own copy; outside the threads,
+  `worker` means all of them (*worker is running* is true while any copy runs, **Kill program**
+  `worker` kills them all). The runner lists each copy with its own log.
+- **Stop sequence** (and a **Wait until** that stops on timeout) ends only that thread.
+  **Throw error** or any error ends the whole sequence, threads included.
+- Questions (*user answers Yes*) from several threads are asked one after the other.
+
+Threads take turns inside AutoM8 (like everything else, blocks never freeze the window), so a
+value never changes halfway through a block. [`examples/threads.json`](examples/threads.json)
+shows a blocking, a non-blocking and a time-limited Threads block.
 
 ## Download
 

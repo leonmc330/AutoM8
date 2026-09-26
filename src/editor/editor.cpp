@@ -49,6 +49,10 @@ static void gather_values(const Seq &s)
 		if (b.type == BT::Operate && !b.name.empty())
 			if (MaybeKind k = op_result(b.op, kind_of_operand(b.left), kind_of_operand(b.right)))
 				g_value_kinds.emplace(b.name, *k);
+		if (b.type == BT::Thread && !trim(b.name).empty()) { // the thread index: a number
+			g_value_kinds.emplace(trim(b.name), VK::Number);
+			g_value_names.insert(trim(b.name));
+		}
 		if ((b.type == BT::SetValue || b.type == BT::Operate) && !b.name.empty()) g_value_names.insert(b.name);
 		gather_values(b.body);
 		gather_values(b.else_body);
@@ -324,6 +328,10 @@ static void block_header(Seq &seq, const SeqPath &path, int i, const BlockInfo &
 		ImGui::SameLine();
 		ImGui::TextDisabled("%s", b.name.c_str());
 	}
+	if (b.type == BT::Thread) {
+		ImGui::SameLine();
+		ImGui::TextDisabled("x%d%s", b.count, b.blocking ? "" : ", not blocking");
+	}
 	ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - px(76));
 	if (ImGui::SmallButton("^") && i > 0) request_move(path, i, path, i - 1);
 	ImGui::SameLine();
@@ -373,6 +381,19 @@ static void edit_block(Seq &seq, const SeqPath &path, int i, bool &dirty)
 	case BT::RepeatUntil:
 		edit_condition(b.cond, dirty, w);
 		nested("do", b.body, path, i, false, dirty);
+		break;
+	case BT::Thread:
+		row_label("Threads"); ImGui::SetNextItemWidth(px(90)); dirty |= ImGui::InputInt("##n", &b.count);
+		ImGui::SameLine(); ImGui::TextDisabled("run the blocks below this many times side by side");
+		row_label("Index value"); dirty |= text_field("##i", b.name, std::min(fw, px(200)));
+		ImGui::SameLine(); ImGui::TextDisabled("1 in the first thread, 2 in the second...");
+		ImGui::SetCursorPosX(label_width());
+		dirty |= ImGui::Checkbox("blocking", &b.blocking);
+		ImGui::SameLine();
+		ImGui::TextDisabled(b.blocking ? "(waits for every thread to end)" : "(the sequence goes on while they run)");
+		row_label("Max s"); ImGui::SetNextItemWidth(px(90)); dirty |= ImGui::InputFloat("##max", &b.max_s, 0, 0, "%.1f");
+		ImGui::SameLine(); ImGui::TextDisabled("a thread running longer is killed; -1 = no limit");
+		nested("each thread does", b.body, path, i, false, dirty);
 		break;
 	case BT::SetValue: edit_set(b, dirty, w); break;
 	case BT::Operate: edit_operate(b, dirty, w); break;
@@ -437,6 +458,10 @@ static void add_menu(Seq &seq, bool &dirty)
 				Block b;
 				b.type = bi.type;
 				if (b.type == BT::WaitUntil) b.seconds = -1;
+				if (b.type == BT::Thread) {
+					b.name = "t_index";
+					b.blocking = true;
+				}
 				seq.push_back(b);
 				dirty = true;
 			}

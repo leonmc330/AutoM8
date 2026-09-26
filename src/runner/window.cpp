@@ -90,17 +90,15 @@ static void draw_program_list(Runner &r)
 	ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, px(22));
 	ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
 	ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, px(130));
-	std::set<std::string> shown;
-	for (auto *b : r.programs()) {
-		if (!shown.insert(b->name).second) continue;
-		Proc &p = r.procs[b->name];
-		p.name = b->name;
-		ImGui::PushID(b->name.c_str());
+	auto row = [&](const std::string &name) {
+		Proc &p = r.procs[name];
+		p.name = name;
+		ImGui::PushID(name.c_str());
 		ImGui::TableNextRow();
 		ImGui::TableNextColumn();
-		status_dot(r.program_running(b->name));
+		status_dot(r.program_running(name));
 		ImGui::TableNextColumn();
-		ImGui::TextUnformatted(b->name.c_str());
+		ImGui::TextUnformatted(name.c_str());
 		if (!p.running() && p.exit_status >= 0) {
 			ImGui::SameLine();
 			ImGui::TextDisabled("(exit %d)", p.exit_status);
@@ -108,8 +106,19 @@ static void draw_program_list(Runner &r)
 		ImGui::TableNextColumn();
 		ImGui::Checkbox("Log", &p.show_log);
 		ImGui::SameLine();
-		if (ImGui::SmallButton("Kill")) r.kill_program(b->name);
+		if (ImGui::SmallButton("Kill")) r.kill_program(name);
 		ImGui::PopID();
+	};
+	std::set<std::string> shown;
+	for (auto *b : r.programs()) {
+		if (!shown.insert(b->name).second) continue;
+		row(b->name);
+		// the copies Thread blocks started: "name #1", "name #2"...
+		std::vector<std::string> copies;
+		std::string prefix = b->name + " #";
+		for (auto it = r.procs.lower_bound(prefix); it != r.procs.end() && it->first.rfind(prefix, 0) == 0; ++it)
+			copies.push_back(it->first);
+		for (auto &c : copies) row(c);
 	}
 	ImGui::EndTable();
 }

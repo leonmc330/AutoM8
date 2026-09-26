@@ -87,7 +87,7 @@ static void test_block_table()
 			families_done.insert(kBlocks[i - 1].family);
 		}
 	}
-	CHECK((int)types.size() == kBlockCount && kBlockCount == (int)BT::Throw + 1);
+	CHECK((int)types.size() == kBlockCount && kBlockCount == (int)BT::Thread + 1);
 }
 
 static void test_json_round_trip()
@@ -360,6 +360,118 @@ static void test_value_blocks()
 	fs::remove(path_of(path));
 }
 
+static Block thread_block(int count, bool blocking, Seq body)
+{
+	Block b;
+	b.type = BT::Thread;
+	b.count = count;
+	b.name = "t_index";
+	b.blocking = blocking;
+	b.body = std::move(body);
+	return b;
+}
+
+// Runs in real time (waits, programs): gives up after `limit` seconds.
+static void run_button_timed(Runner &r, const std::string &name, double limit = 10)
+{
+	r.error_text.clear();
+	r.press(name);
+	auto t0 = Clock::now();
+	while (r.active && secs_since(t0) < limit) {
+		r.update();
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	}
+}
+
+static void test_threads()
+{
+	Block wait_long;
+	wait_long.type = BT::WaitSeconds;
+	wait_long.seconds = 30;
+	Block wait_short = wait_long;
+	wait_short.seconds = 0.2f;
+	Block stop;
+	stop.type = BT::Stop;
+	Block fail;
+	fail.type = BT::Throw;
+	fail.command = "thread {t_index} failed";
+	Block echo;
+	echo.type = BT::Run;
+	echo.name = "echo";
+	echo.command = "echo hello";
+	echo.shell = true;
+	echo.blocking = true;
+	echo.max_s = 10;
+	Block heard = block_if({operate_block("heard", "heard", Op::Add, "1")});
+	heard.cond.type = CT::OutputMatches;
+	heard.cond.program = "echo";
+	heard.cond.text = "hello";
+	Block inner = thread_block(2, true, {msg("inner {t_index} {outer}")});
+	inner.name = "t_inner";
+	inner.body = {msg("inner {outer}.{t_inner}")};
+	Block killed = thread_block(3, true, {wait_long, msg("never")});
+	killed.max_s = 0.2f;
+
+	Document d;
+	// Each thread sees its own index; the others values are shared (the sum is 1+2+...+5).
+	d.buttons.push_back({"sum", {0, 0, 0, 1},
+	                     {set_value("sum", VK::Number, "0"),
+	                      thread_block(5, true, {operate_block("sum", "sum", Op::Add, "t_index"), msg("t{t_index}")}),
+	                      msg("sum={sum} index={t_index}")}});
+	d.buttons.push_back({"not blocking", {0, 0, 0, 1},
+	                     {thread_block(2, false, {wait_short, msg("thread {t_index} ends")}), msg("main goes on")}});
+	d.buttons.push_back({"max time", {0, 0, 0, 1}, {killed, msg("after")}});
+	d.buttons.push_back({"stop", {0, 0, 0, 1}, {thread_block(2, true, {stop, msg("never")}), msg("after")}});
+	d.buttons.push_back({"throw", {0, 0, 0, 1}, {thread_block(2, true, {fail}), msg("never")}});
+	d.buttons.push_back({"programs", {0, 0, 0, 1},
+	                     {set_value("heard", VK::Number, "0"), thread_block(2, true, {echo, heard}), msg("heard={heard}")}});
+	Block outer = thread_block(2, true, {inner});
+	outer.name = "outer";
+	d.buttons.push_back({"nested", {0, 0, 0, 1}, {outer}});
+
+	std::string path = path_string(fs::temp_directory_path() / "autom8-threads-test.json");
+	CHECK(save_document(path, d));
+	Document back;
+	CHECK(load_document(path, back));
+	CHECK(document_json(back) == document_json(d));
+	CHECK(back.buttons[2].seq[0].type == BT::Thread && back.buttons[2].seq[0].count == 3 &&
+	      back.buttons[2].seq[0].name == "t_index" && back.buttons[2].seq[0].blocking &&
+	      back.buttons[2].seq[0].max_s > 0.1f && back.buttons[2].seq[0].body.size() == 2);
+
+	Runner r(path);
+	auto at = [&](const std::string &s) {
+		auto it = std::find(r.history.begin(), r.history.end(), s);
+		return it == r.history.end() ? -1 : (int)(it - r.history.begin());
+	};
+	run_button(r, "sum");
+	CHECK(r.error_text.empty() && !r.active);
+	CHECK(at("t1") >= 0 && at("t5") >= 0);
+	CHECK(at("sum=15 index={t_index}") > at("t5")); // blocking: after every thread; the index is theirs only
+
+	run_button_timed(r, "not blocking");
+	CHECK(!r.active && r.error_text.empty());
+	CHECK(at("main goes on") >= 0 && at("main goes on") < at("thread 1 ends") && at("thread 2 ends") >= 0);
+	CHECK(at("not blocking: done") > at("thread 2 ends")); // the button ends with its last thread
+
+	auto t0 = Clock::now();
+	run_button_timed(r, "max time");
+	CHECK(secs_since(t0) < 5 && at("Thread #3: killed after 0.2 s") >= 0 && at("never") < 0 && at("after") >= 0);
+
+	run_button(r, "stop"); // Stop ends the thread only
+	CHECK(r.error_text.empty() && at("never") < 0 && at("after") >= 0);
+	run_button(r, "throw"); // an error ends the whole sequence
+	CHECK(r.error_text == "thread 1 failed" && at("never") < 0);
+
+	run_button_timed(r, "programs"); // each thread runs its own copy of a program
+	CHECK(r.error_text.empty() && at("heard=2") >= 0);
+	CHECK(r.procs.count("echo #1") && r.procs.count("echo #2") && !r.procs.count("echo"));
+	CHECK(!r.program_running("echo"));
+
+	run_button(r, "nested"); // a thread inside a thread keeps the outer index
+	CHECK(at("inner 1.1") >= 0 && at("inner 1.2") >= 0 && at("inner 2.1") >= 0 && at("inner 2.2") >= 0);
+	fs::remove(path_of(path));
+}
+
 static void test_regex()
 {
 	// The default VR check pattern on ~400 KB of output crashed std::regex (stack overflow).
@@ -500,6 +612,7 @@ int main()
 	test_moves();
 	test_values();
 	test_value_blocks();
+	test_threads();
 	test_regex();
 	test_process();
 	printf("%d passed, %d failed\n", g_passed, g_failed);

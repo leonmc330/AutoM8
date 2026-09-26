@@ -11,7 +11,7 @@ using json = nlohmann::json;
 
 enum class BT {
 	Run, WaitSeconds, WaitUntil, If, RepeatN, RepeatUntil, SetValue, Operate,
-	KillProgram, KillMatching, KillAll, Message, Stop, Throw
+	KillProgram, KillMatching, KillAll, Message, Stop, Throw, Thread
 };
 
 struct Color {
@@ -56,9 +56,11 @@ struct Block {
 	// waits, loops, kills, messages
 	float seconds = 1;    // Wait seconds; Wait until timeout (-1 = forever)
 	float graceful_s = 0; // Kill blocks: SIGTERM first, SIGKILL after this long (0 = SIGKILL now)
-	int count = 3;        // Repeat N times (-1 = forever)
+	int count = 3;        // Repeat N times (-1 = forever); Thread: how many threads
 	bool stop_on_timeout = false;
 	bool popup = false;   // Show message
+	// Thread: `count` copies of `body` side by side, `name` = the index value (1..count in each),
+	// `blocking` = wait for them all, `max_s` = kill a thread after this long (-1 = no limit)
 	// Set value (`name` = the value, `command` = number / text as typed, `flag` = yes/no)
 	VK kind = VK::Number;
 	bool flag = false;
@@ -86,7 +88,7 @@ struct Document {
 // A program reads kMinDocumentVersion..kDocumentVersion and refuses the others, so it never
 // runs or saves over a file whose format it doesn't know. Bump kDocumentVersion when the format
 // changes; raise kMinDocumentVersion only when older files can't be read anymore.
-constexpr int kDocumentVersion = 2; // 2: values (Set value, Operate, compare conditions)
+constexpr int kDocumentVersion = 3; // 2: values (Set value, Operate, compare conditions); 3: Thread
 constexpr int kMinDocumentVersion = 1;
 
 // false: `error` says why, `incompatible` is set when the file's version is the reason.
