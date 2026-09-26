@@ -295,6 +295,13 @@ Different kinds are never equal (`1 == "1"` is false) and can't be ordered.
 the sequence as an error, like **Throw error**. [`examples/values.json`](examples/values.json)
 counts to 5 and combines two questions with `xor`.
 
+**Names can be built from other values.** A `{name}` inside a value's name is replaced by that
+value when the block runs: with `i` = `2`, **Set value** `result_{i}` sets `result_2`, and the
+operand `result_{i}` reads it. It works in **Set value** and **Operate** names and in operands,
+and nests in messages: `{result_{i}}` shows `result_2`. This is how [threads](#threads) keep
+one value each: `square_{t_index}` = `t_index * t_index` gives `square_1`, `square_2`... A `{name}`
+that is no value, in a name, is an error when it runs; the editor can't check these names before.
+
 ## Threads
 
 A **Threads** block runs the blocks inside it several times **at the same time**: 5 threads
@@ -309,7 +316,7 @@ means 5 copies of those blocks running side by side, each at its own pace.
   it doesn't exist; a thread inside a thread still sees the outer thread's index.
 - **Every other value is shared**: threads read and write the same values as the rest of
   the sequence, so they can hand results back (`total = total + t_index` in each of 5 threads
-  gives `15`) or signal the main sequence (set `ready` to `true`, and a **Wait until** *ready is
+  gives `15`, or one value per thread with a [name like `result_{t_index}`](#values)) or signal the main sequence (set `ready` to `true`, and a **Wait until** *ready is
   true* elsewhere sees it).
 - **blocking**: the sequence waits until every thread has ended, then goes on. Not blocking:
   the sequence goes on right away while the threads run; the button is only done when the

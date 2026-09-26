@@ -88,6 +88,7 @@ bool evaluate(const std::string &operand, const Values &vals, Value &out, std::s
 		out = d;
 		return true;
 	}
+	if (!expand_name(t, vals, t, error)) return false;
 	auto it = vals.find(t);
 	if (it == vals.end()) {
 		error = "no value named '" + t + "' (set it first, or put quotes around a text)";
@@ -211,23 +212,67 @@ bool cmp_allowed(Cmp cmp, MaybeKind l, MaybeKind r)
 	return !l || !r || *l == *r;
 }
 
+// The '}' that closes the '{' at `open` (braces inside are counted), or npos.
+static size_t closing_brace(const std::string &s, size_t open)
+{
+	int depth = 0;
+	for (size_t j = open; j < s.size(); j++) {
+		if (s[j] == '{') depth++;
+		else if (s[j] == '}' && --depth == 0) return j;
+	}
+	return std::string::npos;
+}
+
 std::string substitute(const std::string &text, const Values &vals)
 {
 	if (vals.empty()) return text;
 	std::string out;
 	size_t i = 0;
 	while (i < text.size()) {
-		size_t open = text.find('{', i), close;
-		if (open == std::string::npos || (close = text.find('}', open)) == std::string::npos) break;
-		auto it = vals.find(trim(text.substr(open + 1, close - open - 1)));
-		out += text.substr(i, open - i);
+		size_t close;
+		if (text[i] != '{' || (close = closing_brace(text, i)) == std::string::npos) {
+			out += text[i++];
+			continue;
+		}
+		// {result_{i}}: the inner braces first, then the name they make
+		auto it = vals.find(trim(substitute(text.substr(i + 1, close - i - 1), vals)));
 		if (it != vals.end()) {
 			out += to_text(it->second);
 			i = close + 1;
 		} else {
-			out += '{';
-			i = open + 1;
+			out += text[i++]; // not a value: kept as typed
 		}
 	}
-	return out + text.substr(i);
+	return out;
+}
+
+bool expand_name(const std::string &name, const Values &vals, std::string &out, std::string &error)
+{
+	std::string res;
+	for (size_t i = 0; i < name.size();) {
+		if (name[i] == '}') {
+			error = "'" + name + "': a '}' without its '{'";
+			return false;
+		}
+		if (name[i] != '{') {
+			res += name[i++];
+			continue;
+		}
+		size_t close = closing_brace(name, i);
+		if (close == std::string::npos) {
+			error = "'" + name + "': a '{' without its '}'";
+			return false;
+		}
+		std::string inner;
+		if (!expand_name(trim(name.substr(i + 1, close - i - 1)), vals, inner, error)) return false;
+		auto it = vals.find(inner);
+		if (it == vals.end()) {
+			error = "'" + name + "': no value named '" + inner + "'";
+			return false;
+		}
+		res += to_text(it->second);
+		i = close + 1;
+	}
+	out = trim(res);
+	return true;
 }

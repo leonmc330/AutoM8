@@ -273,6 +273,20 @@ static void test_values()
 	CHECK(cmp_allowed(Cmp::Eq, yn, yn) && !cmp_allowed(Cmp::Gt, num, text) && cmp_allowed(Cmp::Ne, num, text));
 	CHECK(cmp_allowed(Cmp::Ge, unknown, num) && !cmp_allowed(Cmp::Ge, unknown, yn));
 	CHECK(substitute("{n}", {}) == "{n}");
+
+	// Names made from other values: result_{n} is result_3.
+	vals["result_3"] = std::string("three");
+	std::string name;
+	CHECK(expand_name("result_{n}", vals, name, err) && name == "result_3");
+	CHECK(expand_name(" plain ", vals, name, err) && name == "plain");
+	CHECK(expand_name("{s}_{yes}", vals, name, err) && name == "hi_true");
+	vals["k"] = std::string("n");
+	CHECK(expand_name("x{{k}}", vals, name, err) && name == "x3"); // nested: {k} = n, {n} = 3
+	CHECK(!expand_name("r_{none}", vals, name, err) && err.find("none") != std::string::npos);
+	CHECK(!expand_name("r_{n", vals, name, err) && !expand_name("r_n}", vals, name, err));
+	CHECK(evaluate("result_{n}", vals, v, err) && std::get<std::string>(v) == "three");
+	CHECK(!evaluate("result_{s}", vals, v, err) && err.find("result_hi") != std::string::npos);
+	CHECK(substitute("{result_{n}} {result_{none}} {x{", vals) == "three {result_{none}} {x{");
 }
 
 static Block set_value(const std::string &name, VK kind, const std::string &text, bool flag = false)
@@ -428,6 +442,11 @@ static void test_threads()
 	Block outer = thread_block(2, true, {inner});
 	outer.name = "outer";
 	d.buttons.push_back({"nested", {0, 0, 0, 1}, {outer}});
+	// Each thread writes its own value: square_1, square_2, square_3.
+	d.buttons.push_back({"named", {0, 0, 0, 1},
+	                     {thread_block(3, true, {operate_block("square_{t_index}", "t_index", Op::Mul, "t_index")}),
+	                      set_value("i", VK::Number, "2"), operate_block("got", "square_{i}", Op::Add, "0"),
+	                      msg("{square_1} {square_3} {square_{i}} got={got}")}});
 
 	std::string path = path_string(fs::temp_directory_path() / "autom8-threads-test.json");
 	CHECK(save_document(path, d));
@@ -469,6 +488,8 @@ static void test_threads()
 
 	run_button(r, "nested"); // a thread inside a thread keeps the outer index
 	CHECK(at("inner 1.1") >= 0 && at("inner 1.2") >= 0 && at("inner 2.1") >= 0 && at("inner 2.2") >= 0);
+	run_button(r, "named");
+	CHECK(r.error_text.empty() && at("1 9 4 got=4") >= 0);
 	fs::remove(path_of(path));
 }
 

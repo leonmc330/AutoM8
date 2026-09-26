@@ -74,10 +74,23 @@ static void unknown_names(std::initializer_list<const std::string *> operands)
 {
 	for (auto *o : operands) {
 		std::string t = trim(*o);
-		if (t.empty() || is_literal(t) || g_value_names.count(t)) continue;
+		// a name made from other values ({t_index}) is only known when it runs
+		if (t.empty() || is_literal(t) || g_value_names.count(t) || t.find('{') != std::string::npos) continue;
 		ImGui::SetCursorPosX(label_width());
 		ImGui::TextColored(kWarn, "No block sets '%s' (put text in \"quotes\")", t.c_str());
 	}
+}
+
+// Value names may contain {other value}: shown in the name fields' tooltip, and explained once used.
+static bool name_field(const char *id, std::string &s, float w)
+{
+	bool changed = text_field(id, s, w);
+	if (ImGui::IsItemHovered()) ImGui::SetTooltip("{other} in a name is replaced by that value: result_{t_index} -> result_2");
+	if (s.find('{') != std::string::npos) {
+		ImGui::SetCursorPosX(label_width());
+		ImGui::TextDisabled("named when it runs: each {name} is replaced by that value");
+	}
+	return changed;
 }
 
 static const char *kind_word(MaybeKind k) { return k ? kKindLabels[(int)*k] : "?"; }
@@ -133,7 +146,7 @@ static void edit_set(Block &b, bool &dirty, float w)
 {
 	float fw = w - label_width();
 	row_label("Name");
-	dirty |= text_field("##n", b.name, fw);
+	dirty |= name_field("##n", b.name, fw);
 	auto first = g_first_set.find(b.name);
 	bool follows = first != g_first_set.end() && first->second.block != &b;
 	if (follows && b.kind != first->second.kind) {
@@ -171,7 +184,7 @@ static void edit_set(Block &b, bool &dirty, float w)
 static void edit_operate(Block &b, bool &dirty, float w)
 {
 	row_label("Result");
-	dirty |= text_field("##n", b.name, w - label_width());
+	dirty |= name_field("##n", b.name, w - label_width());
 	row_label("=");
 	MaybeKind l = kind_of_operand(b.left), r = kind_of_operand(b.right);
 	OpChoices ops = {kOpCount, kOpIds,

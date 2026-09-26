@@ -445,20 +445,23 @@ bool Runner::step(Block &b, bool first)
 	case BT::KillAll: return kill_step(b, first);
 	case BT::SetValue: {
 		double d;
+		std::string name, err;
 		if (b.name.empty()) fail("Set value: the value has no name");
-		else if (b.kind == VK::Bool) set_value(b.name, b.flag);
-		else if (b.kind == VK::Text) set_value(b.name, b.command);
-		else if (parse_number(b.command, d)) set_value(b.name, d);
-		else fail("Set value " + b.name + ": '" + b.command + "' is not a number");
+		else if (!expand_name(b.name, visible_values(), name, err)) fail("Set value " + err);
+		else if (b.kind == VK::Bool) set_value(name, b.flag);
+		else if (b.kind == VK::Text) set_value(name, b.command);
+		else if (parse_number(b.command, d)) set_value(name, d);
+		else fail("Set value " + name + ": '" + b.command + "' is not a number");
 		return true;
 	}
 	case BT::Operate: {
 		Value l, r = false, out;
-		std::string err;
+		std::string name, err;
 		if (b.name.empty()) fail("Operate: the result has no name");
+		else if (!expand_name(b.name, visible_values(), name, err)) fail("Operate " + err);
 		else if (!value_of(b.left, l) || (b.op != Op::Not && !value_of(b.right, r))) return true;
-		else if (!operate(b.op, l, r, out, err)) fail(b.name + ": " + err);
-		else set_value(b.name, std::move(out));
+		else if (!operate(b.op, l, r, out, err)) fail(name + ": " + err);
+		else set_value(name, std::move(out));
 		return true;
 	}
 	case BT::Message: {

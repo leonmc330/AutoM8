@@ -82,6 +82,7 @@ Semantics:
 
 ### Values
 Per press of a button: empty at press, dropped when the sequence ends, invisible to other buttons. Kinds: number (double, shown `%.15g`), text, bool. Operand syntax (Python-like): `"text"` / `'text'` (escapes `\" \' \\ \n`), `true`/`false`, a number, else a value name (unknown → error).
+- Names with `{other}`: in `set`/`operate` names and name operands, each `{x}` (nestable) is replaced by value x's text when run (`result_{i}`, i=2 → `result_2`); x not a value / unbalanced brace → runtime error. Messages/throw/questions nest too: `{result_{i}}`. Editor doesn't warn on operand names containing `{`.
 - `+ - * /` numbers (`/0` error); `+` with any text side joins as text (`"n = "+3` → `n = 3`); `and or xor` two bools; `not` one bool. Other mixes → error.
 - Compare: same kind; numbers/texts all six ops (texts byte order), bools `== !=`; different kinds: `==` false, `!=` true, ordering → error.
 - Any runtime value error ends the sequence as an error (like `throw`: popup / exit 1).

@@ -52,4 +52,9 @@ MaybeKind op_result(Op op, MaybeKind left, MaybeKind right);
 bool cmp_allowed(Cmp cmp, MaybeKind left, MaybeKind right);
 
 // "Count: {n}" -> "Count: 3" for every {name} that is a value; other braces are kept.
+// Braces nest: {result_{i}} is the value result_2 when i is 2.
 std::string substitute(const std::string &text, const Values &vals);
+
+// A value's name may contain {other}: "result_{i}" -> "result_2" when i is 2 (also nested).
+// Unlike substitute(), a {name} that is not a value is an error.
+bool expand_name(const std::string &name, const Values &vals, std::string &out, std::string &error);
